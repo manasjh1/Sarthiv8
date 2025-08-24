@@ -30,9 +30,22 @@ class PromptEngineConfig:
         )
 
 
+@dataclass
+class GlobalIntentClassifierConfig:
+    """Global Intent Classifier specific configuration"""
+    intent_classifier_stage_id: int = 21
+    
+    @classmethod
+    def from_env(cls) -> 'GlobalIntentClassifierConfig':
+        """Load Global Intent Classifier config from environment variables"""
+        return cls(
+            intent_classifier_stage_id=int(os.getenv('GIC_INTENT_STAGE_ID', '21'))
+        )
+
+
 # Add this to your existing config.py class structure
 class AppConfig:
-    """Your existing app configuration - add prompt engine config here"""
+    """Your existing app configuration - updated to include new services"""
     
     def __init__(self):
         # Your existing config initialization
@@ -40,3 +53,6 @@ class AppConfig:
         
         # Add prompt engine config
         self.prompt_engine = PromptEngineConfig.from_env()
+        
+        # Add global intent classifier config
+        self.global_intent_classifier = GlobalIntentClassifierConfig.from_env()
