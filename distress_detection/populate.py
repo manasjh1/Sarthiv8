@@ -1,108 +1,80 @@
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
-try:
-    from pinecone import Pinecone, ServerlessSpec
-except ImportError:
-    # Fallback for older versions
-    import pinecone as pinecone_module
-    from pinecone import ServerlessSpec
-from keywords import red_list, yellow_list
+from pinecone import Pinecone, ServerlessSpec
+from .keywords import red_list, yellow_list
+from config import AppConfig
 
+# Load environment variables from .env file
 load_dotenv()
 
-# Load environment variables
-pinecone_api_key = os.getenv("PINECONE_API_KEY")
-pinecone_env = os.getenv("PINECONE_ENV")  
-index_name = os.getenv("PINECONE_INDEX")
-namespace = os.getenv("PINECONE_NAMESPACE", "distress")
-openai_api_key = os.getenv("OPENAI_API_KEY")
-model = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
-
-# Validate environment variables
-if not all([pinecone_api_key, index_name, openai_api_key]):
-    raise ValueError("Missing required environment variables: PINECONE_API_KEY, PINECONE_INDEX, OPENAI_API_KEY")
-
-# Create OpenAI client
-client = OpenAI(api_key=openai_api_key)
-
-# Create Pinecone client - handle different versions
-try:
-    # New Pinecone client (v3.0+)
-    pc = Pinecone(api_key=pinecone_api_key)
+def populate_pinecone():
+    """
+    Connects to OpenAI and Pinecone to populate the distress detection index.
+    """
+    print("🚀 Starting Pinecone population script...")
     
-    # Create index if it doesn't exist
-    existing_indexes = [index.name for index in pc.list_indexes()]
-    if index_name not in existing_indexes:
-        # Determine dimension based on model
-        dimension = 1536
+    # Load configuration from the central AppConfig
+    try:
+        app_config = AppConfig.from_env()
+        pinecone_config = app_config.distress
+        openai_key = app_config.llm.api_key
+        embed_model = pinecone_config.openai_embed_model
+        index_name = pinecone_config.pinecone_index
+        namespace = pinecone_config.pinecone_namespace
         
+        print(f"✅ Configuration loaded successfully.")
+        print(f"   - Pinecone Index: {index_name}")
+        print(f"   - Embedding Model: {embed_model}")
+
+    except Exception as e:
+        print(f"❌ Error loading configuration: {e}")
+        return
+
+    # Initialize clients
+    openai_client = OpenAI(api_key=openai_key)
+    pc = Pinecone(api_key=pinecone_config.pinecone_api_key)
+
+    # Check if the index exists, create it if not
+    if index_name not in [index.name for index in pc.list_indexes()]:
+        print(f"Index '{index_name}' not found. Creating a new one...")
         pc.create_index(
             name=index_name,
-            dimension=dimension,
+            dimension=1536,  # Based on text-embedding-3-small
             metric="cosine",
-            spec=ServerlessSpec(
-                cloud="aws",
-                region="us-east-1"  # Default region
-            )
+            spec=ServerlessSpec(cloud="aws", region="us-east-1")
         )
-        print(f"Created new index: {index_name}")
+        print(f"✅ Index '{index_name}' created successfully.")
     
     index = pc.Index(index_name)
+
+    def get_embeddings(text_list, model):
+        response = openai_client.embeddings.create(model=model, input=text_list)
+        return [item.embedding for item in response.data]
+
+    # Upload red list
+    print("\nProcessing and uploading red (critical) keywords...")
+    red_embeddings = get_embeddings(red_list, embed_model)
+    red_vectors = list(zip(
+        [f"red_{i}" for i in range(len(red_list))],
+        red_embeddings,
+        [{"category": "red", "text": t} for t in red_list]
+    ))
+    index.upsert(vectors=red_vectors, namespace=namespace)
+    print(f"✅ Uploaded {len(red_vectors)} red keywords.")
+
+    # Upload yellow list
+    print("\nProcessing and uploading yellow (warning) keywords...")
+    yellow_embeddings = get_embeddings(yellow_list, embed_model)
+    yellow_vectors = list(zip(
+        [f"yellow_{i}" for i in range(len(yellow_list))],
+        yellow_embeddings,
+        [{"category": "yellow", "text": t} for t in yellow_list]
+    ))
+    index.upsert(vectors=yellow_vectors, namespace=namespace)
+    print(f"✅ Uploaded {len(yellow_vectors)} yellow keywords.")
     
-except Exception as e:
-    try:
-        # Older Pinecone client
-        import pinecone
-        pinecone.init(api_key=pinecone_api_key, environment=pinecone_env)
-        
-        # Create index if it doesn't exist
-        if index_name not in pinecone.list_indexes():
-            dimension = 1536
-            pinecone.create_index(
-                name=index_name,
-                dimension=dimension,
-                metric="cosine"
-            )
-            print(f"Created new index: {index_name}")
-        
-        index = pinecone.Index(index_name)
-        
-    except Exception as e2:
-        raise ValueError(f"Failed to initialize Pinecone: {str(e)} | {str(e2)}")
+    print("\n🎉 Pinecone population complete!")
 
-# Generate embeddings
-def get_embeddings(text_list):
-    response = client.embeddings.create(
-        model=model,
-        input=text_list
-    )
-    return [item.embedding for item in response.data]
-
-print(f"Using model: {model}")
-print(f"Uploading to index: {index_name}, namespace: {namespace}")
-
-# Upload red list
-print("Uploading red (critical) keywords...")
-red_embeddings = get_embeddings(red_list)
-red_ids = [f"red_{i}" for i in range(len(red_list))]
-red_metadata = [{"category": "red", "text": t} for t in red_list]
-
-vectors_to_upsert = list(zip(red_ids, red_embeddings, red_metadata))
-index.upsert(vectors=vectors_to_upsert, namespace=namespace)
-
-# Upload yellow list
-print("Uploading yellow (warning) keywords...")
-yellow_embeddings = get_embeddings(yellow_list)
-yellow_ids = [f"yellow_{i}" for i in range(len(yellow_list))]
-yellow_metadata = [{"category": "yellow", "text": t} for t in yellow_list]
-
-vectors_to_upsert = list(zip(yellow_ids, yellow_embeddings, yellow_metadata))
-index.upsert(vectors=vectors_to_upsert, namespace=namespace)
-
-print(f"✅ Successfully uploaded vectors to Pinecone!")
-print(f"   Index: {index_name}")
-print(f"   Namespace: {namespace}")
-print(f"   Model: {model}")
-print(f"   Red keywords: {len(red_list)}")
-print(f"   Yellow keywords: {len(yellow_list)}")
+if __name__ == "__main__":
+    populate_pinecone()
