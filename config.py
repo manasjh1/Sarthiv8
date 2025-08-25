@@ -1,6 +1,12 @@
+# =======================================================================
+# config.py (Corrected and Consolidated)
+# =======================================================================
 import os
 from dataclasses import dataclass, field
 from typing import Optional
+from dotenv import load_dotenv
+
+load_dotenv()
 
 @dataclass
 class PromptEngineConfig:
@@ -36,10 +42,7 @@ class GlobalIntentClassifierConfig:
 @dataclass
 class LLMConfig:
     """Configuration for the LLM service, loaded from environment variables"""
-    # CORRECT ORDER: Required fields (no default) must come first.
     api_key: str = field(repr=False)
-    
-    # Optional fields (with defaults) come after.
     provider: str = "openai"
     model: str = "gpt-4o"
 
@@ -55,32 +58,14 @@ class LLMConfig:
         )
 
 @dataclass
-class AppConfig:
-    """
-    Central application configuration that holds settings for all services.
-    """
-    prompt_engine: PromptEngineConfig
-    global_intent_classifier: GlobalIntentClassifierConfig
-    llm: LLMConfig
-
-    @classmethod
-    def from_env(cls) -> 'AppConfig':
-        """Load all configurations from environment variables"""
-        return cls(
-            prompt_engine=PromptEngineConfig.from_env(),
-            global_intent_classifier=GlobalIntentClassifierConfig.from_env(),
-            llm=LLMConfig.from_env()
-        )
-        
-@dataclass
 class DistressConfig:
     """Configuration for the Distress Detection service"""
     pinecone_api_key: str = field(repr=False)
     pinecone_index: str
     pinecone_namespace: str = "distress"
     openai_embed_model: str = "text-embedding-3-small"
-    red_threshold: float = 0.55
-    yellow_threshold: float = 0.45
+    red_threshold: float = 0.65
+    yellow_threshold: float = 0.55
 
     @classmethod
     def from_env(cls) -> 'DistressConfig':
@@ -101,11 +86,12 @@ class DistressConfig:
 class AppConfig:
     """
     Central application configuration that holds settings for all services.
+    This is the single, correct version of the class.
     """
     prompt_engine: PromptEngineConfig
     global_intent_classifier: GlobalIntentClassifierConfig
     llm: LLMConfig
-    distress: DistressConfig # <-- ADD THIS LINE
+    distress: DistressConfig
 
     @classmethod
     def from_env(cls) -> 'AppConfig':
@@ -114,5 +100,5 @@ class AppConfig:
             prompt_engine=PromptEngineConfig.from_env(),
             global_intent_classifier=GlobalIntentClassifierConfig.from_env(),
             llm=LLMConfig.from_env(),
-            distress=DistressConfig.from_env() # <-- ADD THIS LINE
-        )        
+            distress=DistressConfig.from_env()
+        )

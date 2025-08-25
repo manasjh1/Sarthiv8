@@ -1,16 +1,23 @@
-import os
+# =======================================================================
+# distress_detection/detector.py (Final Correction)
+# =======================================================================
+from __future__ import annotations
 import asyncio
 import logging
-from enum import Enum
-from typing import Optional
+from typing import Optional, TYPE_CHECKING  # <-- Import TYPE_CHECKING
 from openai import AsyncOpenAI
 from pinecone import Pinecone
-from config import DistressConfig
-from .keywords import block_list # Import the new block_list
+from .keywords import block_list
+
+# This block is only processed by type-checkers, not when the code runs.
+# This prevents the circular import error at runtime.
+if TYPE_CHECKING:
+    from config import DistressConfig
 
 class DistressDetector:
     """Distress detection using a hybrid of word-based and vector search."""
     
+    # Now we can use the actual type hint without causing a runtime error
     def __init__(self, config: DistressConfig, openai_api_key: str):
         self.config = config
         self.logger = logging.getLogger(__name__)
@@ -37,21 +44,15 @@ class DistressDetector:
         )
 
     async def check(self, message: str) -> int:
-        """
-        Checks a message for distress using a hybrid approach.
-        """
         if not message or not message.strip():
             return 0
 
-        # --- 1. Word-Based Search (Safety Net) ---
-        # CORRECTED LOGIC: Split the message into words and check if any word is in the block_list.
         message_words = set(message.lower().split())
         for block_word in block_list:
             if block_word in message_words:
                 self.logger.warning(f"CRITICAL distress detected by word-based search: found '{block_word}'")
                 return 1 # Critical
 
-        # --- 2. Vector-Based Search (Semantic) ---
         try:
             embedding = await self._get_embedding(message)
             result = await asyncio.to_thread(self._query_pinecone, embedding)
@@ -64,17 +65,16 @@ class DistressDetector:
             category = match.metadata.get("category", "")
             
             if category == "red" and confidence >= self.config.red_threshold:
-                return 1 # Critical
+                return 1
             elif category == "yellow" and confidence >= self.config.yellow_threshold:
-                return 2 # Warning
+                return 2
             
-            return 0 # Safe
+            return 0
             
         except Exception as e:
             self.logger.error(f"Distress detection failed: {str(e)}")
-            return 0 # Fail-safe
+            return 0
 
-# --- Singleton pattern for easy access ---
 _detector: Optional[DistressDetector] = None
 
 async def get_detector(config: DistressConfig, openai_api_key: str) -> DistressDetector:

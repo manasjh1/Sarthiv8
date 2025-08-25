@@ -46,7 +46,7 @@ class GlobalIntentClassifierService:
     async def process_json_request(self, json_input: str) -> str:
         try:
             input_data = json.loads(json_input)
-            request = ConversationRequest(**input_data)
+            request = ConversationRequest(**input_data) # <-- CORRECTED
             user_message = request.user_response or ""
             reflection_id = request.reflection_id or "default-reflection-id"
             result = await self.classify_intent(
