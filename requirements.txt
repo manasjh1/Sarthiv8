@@ -1,4 +1,10 @@
-asyncpg>=0.29.0
-psycopg2-binary>=2.9.7
-pydantic>=2.0.0
-python-dotenv>=1.0.0
+fastapi==0.110.0       # The main web framework for building the API
+uvicorn[standard]==0.29.0 # The ASGI server to run the FastAPI application
+
+SQLAlchemy==2.0.29     # The Object-Relational Mapper (ORM) for database interactions
+asyncpg>=0.29.0        # Asynchronous driver for PostgreSQL (already present)
+psycopg2-binary>=2.9.7 # Synchronous driver for PostgreSQL (already present)
+
+pydantic>=2.7.1        # For data validation and settings management (updated for compatibility)
+python-dotenv>=1.0.0   # For managing environment variables (already present)
+openai==1.97.0        # For interacting with OpenAI API (already present)

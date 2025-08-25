@@ -13,37 +13,31 @@ class IntentType(str, Enum):
     NO_OVERRIDE = "NO_OVERRIDE"
 
 
-class IntentRequestById(BaseModel):
-    """Request model for intent classification - only needs reflection_id"""
-    reflection_id: str = Field(..., description="Unique reflection ID to fetch message")
-
-
-class MessageRequest(BaseModel):
+class ConversationRequest(BaseModel):
     """
-    Defines the structure for incoming chat messages from the client.
+    Defines the structure for an incoming conversation turn from the client.
     """
     reflection_id: Optional[str] = None
-    message: Optional[str] = ""
-    data: List[Dict[str, Any]] = []
+    system_response: Optional[str] = ""
+    user_response: Optional[str] = ""
 
 
 class IntentResult(BaseModel):
-    """Final result from intent classifier"""
+    """Final result from the intent classifier"""
     reflection_id: str = Field(..., description="Reflection ID")
-    intent: IntentType = Field(..., description="Classified intent")
+    system_response: Dict[str, Any] = Field(..., description="Data for the system, containing key-value pairs")
+    user_response: Dict[str, Any] = Field(..., description="The response object to be shown to the user")
 
 
+# --- Other models remain the same ---
 class MessageData(BaseModel):
-    """Model for fetched message data"""
-    reflection_id: str = Field(..., description="Reflection ID")
-    user_message: str = Field(..., description="User message content")
-    timestamp: Optional[str] = Field(None, description="Message timestamp")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional message metadata")
-
+    reflection_id: str
+    user_message: str
+    timestamp: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 @dataclass
 class PromptData:
-    """Internal data model for prompt table records"""
     prompt_id: int
     flow_type: Optional[str]
     stage_id: int
