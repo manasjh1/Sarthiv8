@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Any
 from .engine import AsyncPromptEngine
 from .database import AsyncDatabaseManager
-from .models import PromptRequest, PromptResponse
+from .models import PromptRequest, PromptResponse, PromptData
 from .exceptions import PromptEngineError
 
 
@@ -81,3 +81,19 @@ class PromptEngineService:
         response = await self.engine.process_prompt(request)
         return response.model_dump()
 
+    # FIXED: Add the missing method
+    async def get_prompt_by_stage(self, stage_id: int, flow_type: str = None) -> PromptData:
+        """
+        Get prompt data by stage ID
+        
+        Args:
+            stage_id: The stage ID to fetch
+            flow_type: Optional flow type filter
+            
+        Returns:
+            PromptData object
+        """
+        if not self._initialized:
+            raise PromptEngineError("Service not initialized")
+        
+        return await self.db_manager.get_prompt_by_stage_id(stage_id, flow_type)

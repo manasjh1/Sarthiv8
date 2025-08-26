@@ -55,8 +55,10 @@ class InteractivePromptTester:
         """Handle custom JSON input from user"""
         print("\nCustom Input Mode")
         print("-" * 30)
-        print("Enter your JSON input with 'stage_id' and 'data'")
-        print("Example: {\"stage_id\": 1, \"data\": {\"name\": \"Manas\"}}")
+        print("Enter your JSON input with 'stage_id' and 'data' (both required)")
+        print("Examples:")
+        print('  {"stage_id": 1, "data": {}}')
+        print('  {"stage_id": 2, "data": {"name": "Manas"}}')
         print("Type 'back' to return to menu")
         
         while True:
@@ -78,9 +80,10 @@ class InteractivePromptTester:
         print("-" * 30)
         
         templates = [
-            {"name": "Stage 1 - Basic", "json": {"stage_id": 1, "data": {}}},
+            {"name": "Stage 1 - Static Only", "json": {"stage_id": 1, "data": {}}},
             {"name": "Stage 2 - With Name", "json": {"stage_id": 2, "data": {"name": "Manas"}}},
             {"name": "Stage 3 - With Emotion", "json": {"stage_id": 3, "data": {"emotion": "happy"}}},
+            {"name": "Stage 2 - Empty Data (test missing vars)", "json": {"stage_id": 2, "data": {}}},
             {"name": "Dynamic Test", "json": {"stage_id": 2, "data": {"name": "Alex", "age": 25}}},
             {"name": "Custom - Enter your own", "json": None}
         ]
@@ -91,7 +94,7 @@ class InteractivePromptTester:
             else:
                 print(f"{i}. {template['name']}")
         
-        print("Enter choice (1-5) or 'back':")
+        print("Enter choice (1-6) or 'back':")
         
         while True:
             choice = input("Template choice: ").strip()
@@ -131,7 +134,7 @@ class InteractivePromptTester:
             if db_manager._pool:
                 async with db_manager._pool.acquire() as connection:
                     stages = await connection.fetch("""
-                        SELECT stage_id, prompt_name, is_static, prompt_type, next_stage,
+                        SELECT stage_id, prompt_name, is_static, prompt_type,
                                LEFT(prompt, 100) as prompt_preview
                         FROM prompt_table 
                         WHERE status = 1 
@@ -145,7 +148,6 @@ class InteractivePromptTester:
                         print(f"Stage {stage['stage_id']}: {stage['prompt_name']}")
                         print(f"  Type: {'User' if stage['prompt_type'] == 0 else 'System'}")
                         print(f"  Static: {stage['is_static']}")
-                        print(f"  Next Stage: {stage['next_stage']}")
                         print(f"  Preview: {stage['prompt_preview']}...")
                         print()
         except Exception as e:
@@ -168,6 +170,10 @@ class InteractivePromptTester:
                 print("ERROR: Missing 'stage_id' field")
                 return
             
+            if 'data' not in input_data:
+                print("ERROR: Missing 'data' field (can be empty: {})")
+                return
+            
             print(f"INPUT: {json_input}")
             
             # Process the request
@@ -184,9 +190,9 @@ class InteractivePromptTester:
             # Show summary
             print(f"\nSUMMARY:")
             print(f"Stage ID: {input_data.get('stage_id')}")
+            print(f"Data Keys: {list(input_data.get('data', {}).keys()) if input_data.get('data') else 'Empty'}")
             print(f"Prompt Type: {response_data.get('prompt_type')} ({'User' if response_data.get('prompt_type') == 0 else 'System'})")
             print(f"Is Static: {response_data.get('is_static')}")
-            print(f"Next Stage: {response_data.get('next_stage', 'None')}")
             print(f"Prompt Length: {len(response_data.get('prompt', ''))}")
             
             # Show prompt preview

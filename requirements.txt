@@ -1,4 +1,30 @@
+# Core Web Framework & Server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+aiohttp>=3.8.0
+slowapi
+
+# Database and ORM
+sqlalchemy==2.0.23
 asyncpg>=0.29.0
 psycopg2-binary>=2.9.7
-pydantic>=2.0.0
+psycopg[binary]==3.1.13
+psycopg[pool]==3.1.13
+
+# Data Validation & Settings
+pydantic==2.4.2
+pydantic-settings==2.1.0
 python-dotenv>=1.0.0
+typing-extensions>=4.11
+
+# Authentication and Security
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.6
+
+# LLM Provider and Vector DB
+openai==1.97.0
+pinecone==3.2.2
+
+# Utilities
+numpy
+jinja2>=3.1.3
