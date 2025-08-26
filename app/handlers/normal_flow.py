@@ -59,11 +59,21 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
         prompt_for_stage_4 = await prompt_engine_service.get_prompt_by_stage(stage_id=4)
         final_user_message = f"{llm_validation_message}\n\n{prompt_for_stage_4.prompt}"
         db_handler.save_message(db, reflection_id, final_user_message, sender=1, stage_no=4)
-        return MessageResponse(success=True, reflection_id=str(reflection_id), sarthi_message=final_user_message, current_stage=3, next_stage=4)
+         # **Crucially, update the reflection's stage to what comes AFTER stage 4**
+        next_stage_from_prompt_engine = prompt_for_stage_4.next_stage
+        db_handler.update_reflection_stage(db, reflection_id, next_stage_from_prompt_engine)
+        
+        return MessageResponse(
+            success=True, 
+            reflection_id=str(reflection_id), 
+            sarthi_message=final_user_message, 
+            current_stage=4,  # We are showing the result of stage 4
+            next_stage=next_stage_from_prompt_engine # And telling the frontend to move to stage 5
+        )
 
-    if current_stage == 4: # INTENTION_INQUIRY (Two-Part, Part 2)  
-        logger.info(f"Processing Stage 4 (INTENTION_INQUIRY) for reflection {reflection_id}")
-        return await process_and_respond(db, 4, reflection_id, chat_id, request)
+    # if current_stage == 4: # INTENTION_INQUIRY (Two-Part, Part 2)  
+    #     logger.info(f"Processing Stage 4 (INTENTION_INQUIRY) for reflection {reflection_id}")
+    #     return await process_and_respond(db, 4, reflection_id, chat_id, request)
 
     if current_stage == 5: # NAME_VALIDATION
         logger.info(f"Processing Stage 5 (NAME_VALIDATION) for reflection {reflection_id}")
@@ -85,7 +95,20 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
         prompt_for_stage_17 = await prompt_engine_service.get_prompt_by_stage(stage_id=17)
         final_user_message = f"{synthesized_msg}\n\n{prompt_for_stage_17.prompt}"
         db_handler.save_message(db, reflection_id, final_user_message, sender=1, stage_no=17)
-        return MessageResponse(success=True, reflection_id=str(reflection_id), sarthi_message=final_user_message, current_stage=16, next_stage=17)
+        next_stage_from_prompt_engine = prompt_for_stage_17.next_stage
+        db_handler.update_reflection_stage(db, reflection_id, next_stage_from_prompt_engine)
+        
+        return MessageResponse(
+            success=True, 
+            reflection_id=str(reflection_id), 
+            sarthi_message=final_user_message, 
+            current_stage=16,  # We are showing the result of stage 16
+            next_stage=next_stage_from_prompt_engine # And telling the frontend to move to stage 18
+        )
+    
+    if current_stage == 18: # AWAITING_DELIVERY_TONE
+        logger.info(f"Processing Stage 18 (AWAITING_DELIVERY_TONE) for reflection {reflection_id}")
+        return await process_and_respond(db, 18, reflection_id, chat_id, request)
 
     if current_stage == 19: # AWAITING_PREAMBLE_DECISION
         logger.info(f"Processing Stage 19 (AWAITING_PREAMBLE_DECISION) for reflection {reflection_id}")

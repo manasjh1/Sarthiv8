@@ -104,10 +104,9 @@ async def _base_process_and_respond(db: Session, current_stage: int, reflection_
     else:  # SYSTEM PROMPT (prompt_type == 1)
         logger.info("Processing SYSTEM PROMPT (prompt_type=1)")
         
-        # Get user message for LLM processing
-        last_user_msg_obj = db_handler.get_last_user_message(db, reflection_id)
-        user_message = last_user_msg_obj.message if last_user_msg_obj else (request.message if request else "")
-        logger.info(f"User message for LLM: '{user_message}'")
+        # Get current user message from request for LLM processing
+        user_message = request.message if request and request.message else ""
+        logger.info(f"Current user message for LLM: '{user_message}'")
         
         if is_static == 0:  # DYNAMIC SYSTEM PROMPT
             logger.info("Dynamic system prompt - calling find_data() and template processing")
@@ -144,18 +143,20 @@ async def _base_process_and_respond(db: Session, current_stage: int, reflection_
             user_response = llm_response.get("user_response", {})
             system_response = llm_response.get("system_response", {})
             
-            # Validate user_response
-            if not user_response or not user_response.get("message"):
-                raise LLMProcessingError("LLM response missing user_response.message")
+            # Handle user_response (may not always be present)
+            if user_response and user_response.get("message"):
+                user_message_text = user_response.get("message", "").strip()
+                if user_message_text:
+                    final_sarthi_message = user_message_text
+                    logger.info(f"Extracted user message: '{final_sarthi_message}'")
+                else:
+                    logger.warning("User response message is empty")
+                    final_sarthi_message = "I'm processing your message."
+            else:
+                logger.info("No user_response in LLM response - this is okay for some system prompts")
+                final_sarthi_message = "Thank you for sharing that with me."
             
-            user_message_text = user_response.get("message", "").strip()
-            if not user_message_text:
-                raise LLMProcessingError("LLM returned empty user message")
-            
-            final_sarthi_message = user_message_text
-            logger.info(f"Extracted user message: '{final_sarthi_message}'")
-            
-            # Process system_response if present
+            # Process system_response if present (this is often the main purpose)
             if system_response:
                 logger.info(f"Processing system_response: {system_response}")
                 await update_database_with_system_message(db, system_response, reflection_id)
