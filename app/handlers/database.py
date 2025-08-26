@@ -1,4 +1,4 @@
-# app/handlers/database.py
+# app/handlers/database.py (FIXED)
 from sqlalchemy.orm import Session
 from app.models import Reflection, Message, Chat, User
 import uuid
@@ -21,12 +21,25 @@ def create_new_reflection(db: Session, chat_id: uuid.UUID) -> uuid.UUID:
     return new_reflection.reflection_id
 
 def update_reflection_stage(db: Session, reflection_id: uuid.UUID, next_stage: int):
+    """FIXED: Add validation to prevent NULL stage updates"""
+    if next_stage is None:
+        # Log the error but don't update - keep current stage
+        import logging
+        logging.error(f"Attempted to update reflection {reflection_id} with NULL stage")
+        return
+    
     reflection = db.query(Reflection).filter(Reflection.reflection_id == reflection_id).first()
     if reflection:
         reflection.current_stage = next_stage
         db.commit()
 
 def save_message(db: Session, reflection_id: uuid.UUID, message: str, sender: int, stage_no: int, is_distress: bool = False):
+    """FIXED: Add validation to prevent NULL stage_no in messages"""
+    # If stage_no is None, use the current reflection stage or default to 0
+    if stage_no is None:
+        reflection = get_reflection_by_id(db, reflection_id)
+        stage_no = reflection.current_stage if reflection and reflection.current_stage is not None else 0
+    
     message_record = Message(reflection_id=reflection_id, message=message, sender=sender, current_stage=stage_no, is_distress=is_distress)
     db.add(message_record)
     db.commit()

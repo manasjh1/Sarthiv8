@@ -1,4 +1,4 @@
-# app/orchestration.py
+# app/orchestration.py (FIXED)
 from sqlalchemy.orm import Session
 from app.schemas import MessageRequest, MessageResponse
 from app.handlers import initial, distress, global_intent, normal_flow
@@ -13,13 +13,19 @@ class MessageOrchestrator:
 
     async def process_message(self, request: MessageRequest, user_id: uuid.UUID, chat_id: uuid.UUID) -> MessageResponse:
         try:
+            # FIXED: Handle initial flow properly
             if not request.reflection_id:
                 self.logger.info(f"Entering initial flow for user {user_id}")
-                initial_response = await initial.handle_initial_flow(self.db, request, user_id, chat_id)
-                if isinstance(initial_response, MessageResponse): return initial_response
-                request.reflection_id = str(initial_response)
+                return await initial.handle_initial_flow(self.db, request, user_id, chat_id)
 
             self.logger.info(f"Entering core flow for reflection {request.reflection_id}")
+            
+            # FIXED: Add validation for reflection_id before processing
+            try:
+                uuid.UUID(request.reflection_id)  # Validate it's a proper UUID
+            except (ValueError, TypeError):
+                self.logger.error(f"Invalid reflection_id format: {request.reflection_id}")
+                return MessageResponse(success=False, sarthi_message="Invalid reflection ID format.")
             
             if (distress_response := await distress.handle_distress_check(self.db, request)): return distress_response
             if (intent_response := await global_intent.handle_global_intent_check(self.db, request, chat_id)): return intent_response
