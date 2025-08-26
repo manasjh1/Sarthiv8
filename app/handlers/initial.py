@@ -1,3 +1,6 @@
+# =======================================================================
+# app/handlers/initial.py (Complete Proper Logic Implementation)
+# =======================================================================
 from sqlalchemy.orm import Session
 from app.schemas import MessageRequest, MessageResponse
 from app.handlers import database as db_handler
@@ -8,9 +11,6 @@ import uuid
 import json
 import logging
 
-from prompt_engine.models import PromptData
-
-# Set up logger
 logger = logging.getLogger(__name__)
 
 async def find_data(stage_no: int, db: Session, reflection_id: uuid.UUID, chat_id: uuid.UUID) -> dict:
@@ -32,120 +32,202 @@ async def find_data(stage_no: int, db: Session, reflection_id: uuid.UUID, chat_i
         return {"emotions": reflection.emotion or "this feeling"}
     return {}
 
-async def update_database_with_system_message(db: Session, system_message: dict, reflection_id: uuid.UUID):
+async def update_database_with_system_message(db: Session, system_response: dict, reflection_id: uuid.UUID):
+    """Updated to use system_response instead of system_message for consistency"""
     reflection = db_handler.get_reflection_by_id(db, reflection_id)
     if not reflection: return
 
-    logger.info(f"Updating database with system message: {system_message}")
+    logger.info(f"Updating database with system_response: {system_response}")
 
-    if recipient_name := system_message.get("recipient_name"):
+    if recipient_name := system_response.get("recipient_name"):
         reflection.receiver_name = recipient_name
         logger.info(f"Set recipient_name to: {recipient_name}")
     
-    if relationship := system_message.get("relationship"):
+    if relationship := system_response.get("relationship"):
         reflection.receiver_relationship = relationship
         logger.info(f"Set relationship to: {relationship}")
     
-    if emotions := system_message.get("emotions"):
+    if emotions := system_response.get("emotions"):
         reflection.emotion = emotions
         logger.info(f"Set emotions to: {emotions}")
     
-    # CORRECTED: At stage 1, the intent becomes the flow_type
-    if intent := system_message.get("intent"):
+    if intent := system_response.get("intent"):
         reflection.flow_type = intent
-        logger.info(f"Set flow_type to: {intent} (from stage 1 INTELLIGENT_CONTEXT_EXTRACTION)")
+        logger.info(f"Set flow_type to: {intent} (from stage {reflection.current_stage})")
     
     db.commit()
+
+class LLMProcessingError(Exception):
+    """Custom exception for LLM processing failures"""
+    pass
 
 async def _base_process_and_respond(db: Session, current_stage: int, reflection_id: uuid.UUID, chat_id: uuid.UUID, request: MessageRequest = None) -> Tuple[str, dict]:
     logger.info(f"Processing stage {current_stage} for reflection {reflection_id}")
     
-    data_for_prompt = await find_data(current_stage, db, reflection_id, chat_id)
-    logger.info(f"Data for prompt: {data_for_prompt}")
-    
-    prompt_request_data = {"stage_id": current_stage, "data": data_for_prompt}
+    # Step 1: Get prompt configuration from prompt engine
+    prompt_request_data = {"stage_id": current_stage, "data": {}}
     prompt_result = await prompt_engine_service.process_dict_request(prompt_request_data)
-    logger.info(f"Prompt result: prompt_type={prompt_result.get('prompt_type')}, has_prompt={bool(prompt_result.get('prompt'))}")
-
+    
+    # Extract configuration
+    prompt_template = prompt_result['prompt']
+    next_stage = prompt_result['next_stage']
+    is_static = prompt_result['is_static']
+    prompt_type = prompt_result['prompt_type']
+    
+    logger.info(f"Prompt config - type: {prompt_type}, static: {is_static}, next_stage: {next_stage}")
+    
     final_sarthi_message = ""
-    system_msg = {}
-
-    if prompt_result['prompt_type'] == 0:
-        # Static prompt
-        final_sarthi_message = prompt_result['prompt']
-        logger.info(f"Using static prompt: {final_sarthi_message[:100]}...")
-    elif prompt_result['prompt_type'] == 1:
-        # Dynamic prompt - needs LLM processing
-        system_prompt = prompt_result['prompt']
+    system_response = {}
+    
+    # Step 2: Process based on prompt_type and is_static conditions
+    if prompt_type == 0:  # USER PROMPT
+        logger.info("Processing USER PROMPT (prompt_type=0)")
+        
+        if is_static == 0:  # DYNAMIC USER PROMPT
+            logger.info("Dynamic user prompt - calling find_data() and template processing")
+            
+            # Get dynamic data for this stage
+            data_dict = await find_data(current_stage, db, reflection_id, chat_id)
+            logger.info(f"Data for stage {current_stage}: {data_dict}")
+            
+            # Process template with dynamic data using prompt engine
+            template_request_data = {"stage_id": current_stage, "data": data_dict}
+            final_prompt_result = await prompt_engine_service.process_dict_request(template_request_data)
+            final_sarthi_message = final_prompt_result['prompt']
+            
+            logger.info(f"Final dynamic user prompt: {final_sarthi_message}")
+            
+        else:  # STATIC USER PROMPT (is_static == 1)
+            logger.info("Static user prompt - using prompt as-is")
+            final_sarthi_message = prompt_template
+            
+    else:  # SYSTEM PROMPT (prompt_type == 1)
+        logger.info("Processing SYSTEM PROMPT (prompt_type=1)")
+        
+        # Get user message for LLM processing
         last_user_msg_obj = db_handler.get_last_user_message(db, reflection_id)
-        last_user_msg = last_user_msg_obj.message if last_user_msg_obj else (request.message if request else "")
+        user_message = last_user_msg_obj.message if last_user_msg_obj else (request.message if request else "")
+        logger.info(f"User message for LLM: '{user_message}'")
         
-        logger.info(f"Making LLM call with system_prompt length: {len(system_prompt)}, user_message: '{last_user_msg}'")
+        if is_static == 0:  # DYNAMIC SYSTEM PROMPT
+            logger.info("Dynamic system prompt - calling find_data() and template processing")
+            
+            # Get dynamic data for this stage
+            data_dict = await find_data(current_stage, db, reflection_id, chat_id)
+            logger.info(f"Data for stage {current_stage}: {data_dict}")
+            
+            # Process template with dynamic data using prompt engine
+            template_request_data = {"stage_id": current_stage, "data": data_dict}
+            final_prompt_result = await prompt_engine_service.process_dict_request(template_request_data)
+            final_system_prompt = final_prompt_result['prompt']
+            
+            logger.info(f"Final dynamic system prompt length: {len(final_system_prompt)}")
+            
+        else:  # STATIC SYSTEM PROMPT (is_static == 1)
+            logger.info("Static system prompt - using prompt as-is")
+            final_system_prompt = prompt_template
         
-        llm_request = {
-            "prompt": system_prompt,
-            "user_message": last_user_msg,
-            "reflection_id": str(reflection_id)
-        }
-        
+        # Call LLM service with system prompt and user message
         try:
-            llm_response_str = await llm_service.process_json_request(json.dumps(llm_request))
-            logger.info(f"LLM response received: {llm_response_str}")
+            logger.info(f"Calling LLM service with system prompt and user message")
+            
+            llm_response_str = await llm_service.process_json_request(json.dumps({
+                "prompt": final_system_prompt,
+                "user_message": user_message,
+                "reflection_id": str(reflection_id)
+            }))
             
             llm_response = json.loads(llm_response_str)
-            logger.info(f"Parsed LLM response keys: {list(llm_response.keys())}")
+            logger.info(f"LLM response received: {llm_response_str}")
             
+            # Extract user_response and system_response
             user_response = llm_response.get("user_response", {})
-            final_sarthi_message = user_response.get("message", "I'm not sure how to respond.")
-            system_msg = llm_response.get("system_response", {})
+            system_response = llm_response.get("system_response", {})
             
-            logger.info(f"Extracted message: '{final_sarthi_message}', system_msg keys: {list(system_msg.keys())}")
+            # Validate user_response
+            if not user_response or not user_response.get("message"):
+                raise LLMProcessingError("LLM response missing user_response.message")
             
-            if system_msg:
-                await update_database_with_system_message(db, system_msg, reflection_id)
+            user_message_text = user_response.get("message", "").strip()
+            if not user_message_text:
+                raise LLMProcessingError("LLM returned empty user message")
+            
+            final_sarthi_message = user_message_text
+            logger.info(f"Extracted user message: '{final_sarthi_message}'")
+            
+            # Process system_response if present
+            if system_response:
+                logger.info(f"Processing system_response: {system_response}")
+                await update_database_with_system_message(db, system_response, reflection_id)
+            else:
+                logger.info("No system_response to process")
                 
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error: {e}. Raw response: {llm_response_str}")
-            final_sarthi_message = "There was an issue processing the response."
-        except Exception as e:
-            logger.error(f"LLM processing error: {e}")
-            final_sarthi_message = "There was an issue processing the response."
-
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError, LLMProcessingError) as e:
+            logger.error(f"LLM processing failed for stage {current_stage}: {e}")
+            raise LLMProcessingError(f"LLM processing failed: {str(e)}")
+    
+    # Step 3: Save user message to chat history if present
     if request and request.message:
+        logger.info(f"Saving user message to chat history: '{request.message}'")
         db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage)
 
-    # Handle NULL next_stage values
-    next_stage = prompt_result.get('next_stage')
-    if next_stage is None:
-        # CORRECTED: For stage 1 (AWAITING_VENT), next stage should be 2 (AWAITING_EMOTION)
-        if current_stage == 1:
-            next_stage = 2  # AWAITING_EMOTION
-        else:
-            next_stage = current_stage + 1
-        logger.warning(f"next_stage was None for stage {current_stage}, using {next_stage} as fallback")
-
-    logger.info(f"Saving Sarthi message: '{final_sarthi_message}' with next_stage: {next_stage}")
-    db_handler.save_message(db, reflection_id, final_sarthi_message, sender=1, stage_no=next_stage)
-    db_handler.update_reflection_stage(db, reflection_id, next_stage)
+    # Step 4: Update current_stage ONLY if next_stage is not null
+    if next_stage is not None:
+        logger.info(f"Updating reflection current_stage from {current_stage} to {next_stage}")
+        db_handler.update_reflection_stage(db, reflection_id, next_stage)
+        
+        # Save Sarthi response with new stage
+        db_handler.save_message(db, reflection_id, final_sarthi_message, sender=1, stage_no=next_stage)
+        logger.info(f"Saved Sarthi message: '{final_sarthi_message}' at stage {next_stage}")
+    else:
+        logger.warning(f"next_stage is null for stage {current_stage} - NOT updating reflection.current_stage")
+        
+        # Save Sarthi response at current stage (don't advance)
+        db_handler.save_message(db, reflection_id, final_sarthi_message, sender=1, stage_no=current_stage)
+        logger.info(f"Saved Sarthi message: '{final_sarthi_message}' at current stage {current_stage}")
     
-    return final_sarthi_message, system_msg
+    return final_sarthi_message, system_response
 
 async def process_and_respond(db: Session, current_stage: int, reflection_id: uuid.UUID, chat_id: uuid.UUID, request: MessageRequest = None) -> MessageResponse:
-    sarthi_message, _ = await _base_process_and_respond(db, current_stage, reflection_id, chat_id, request)
-    reflection = db_handler.get_reflection_by_id(db, reflection_id)
-    
-    # Ensure we always have valid stage values
-    current_stage_safe = current_stage if current_stage is not None else 0
-    next_stage_safe = reflection.current_stage if reflection and reflection.current_stage is not None else current_stage_safe + 1
-    
-    return MessageResponse(success=True, reflection_id=str(reflection_id), sarthi_message=sarthi_message, current_stage=current_stage_safe, next_stage=next_stage_safe)
+    """Process stage with proper error handling"""
+    try:
+        sarthi_message, _ = await _base_process_and_respond(db, current_stage, reflection_id, chat_id, request)
+        reflection = db_handler.get_reflection_by_id(db, reflection_id)
+        
+        return MessageResponse(
+            success=True, 
+            reflection_id=str(reflection_id), 
+            sarthi_message=sarthi_message, 
+            current_stage=current_stage, 
+            next_stage=reflection.current_stage
+        )
+        
+    except LLMProcessingError as e:
+        logger.error(f"Stage {current_stage} processing failed: {e}")
+        
+        # Return error message but DON'T advance stage
+        error_message = "I'm having some technical difficulties processing your message. Could you please try again?"
+        
+        # Save error message at current stage (don't advance)
+        db_handler.save_message(db, reflection_id, error_message, sender=1, stage_no=current_stage)
+        
+        return MessageResponse(
+            success=False, 
+            reflection_id=str(reflection_id), 
+            sarthi_message=error_message,
+            current_stage=current_stage,
+            next_stage=current_stage  # Stay at same stage for retry
+        )
 
-async def handle_initial_flow(db: Session, request: MessageRequest, user_id: uuid.UUID, chat_id: uuid.UUID) -> MessageResponse:
+# Rest of the functions remain the same...
+async def handle_initial_flow(db: Session, request: MessageRequest, user_id: uuid.UUID, chat_id: uuid.UUID) -> Union[MessageResponse, uuid.UUID]:
     latest_reflection = db_handler.get_latest_reflection_by_chat_id(db, chat_id)
+    
+    # Allow new reflection creation for completed (1) OR locked (2) reflections
     if not latest_reflection or latest_reflection.is_delivered in [1, 2]:
         return await handle_create_new_reflection(db, chat_id)
-    if latest_reflection.is_delivered == 2:
-        return MessageResponse(success=False, reflection_id=str(latest_reflection.reflection_id), data=[{"message": "This reflection is locked."}])
+    
+    # Only ask to continue for active/incomplete reflections (is_delivered = 0)
     return await handle_incomplete_reflection(db, request, latest_reflection, chat_id)
 
 async def handle_incomplete_reflection(db: Session, request: MessageRequest, reflection, chat_id: uuid.UUID) -> MessageResponse:

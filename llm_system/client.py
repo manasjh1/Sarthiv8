@@ -22,6 +22,21 @@ class LLMClient:
         self.logger = logging.getLogger(__name__)
         self.client = openai.OpenAI(api_key=self.config.api_key)
 
+    async def chat_completion(self, system_prompt: str, user_message: str, persona: str = None, reflection_id: str = None) -> str:
+        """
+        Generates a chat completion using the LLM.
+        This is a convenience method that wraps process_json_request.
+        """
+        if persona:
+            system_prompt = f"{persona}\n\n{system_prompt}"
+            
+        llm_request = {
+            "reflection_id": reflection_id,
+            "prompt": system_prompt,
+            "user_message": user_message
+        }
+        return await self.process_json_request(json.dumps(llm_request))
+
     async def process_json_request(self, json_input: str) -> str:
         """
         Processes a JSON request, adds the golden persona, calls the LLM,
@@ -32,7 +47,7 @@ class LLMClient:
             reflection_id = input_data.get("reflection_id")
             user_message = input_data.get("user_message", "")
             
-            final_prompt_for_llm = f"{GOLDEN_PERSONA_PROMPT}\n\n--- TASK CONTEXT ---\n{input_data.get('prompt')}"
+            final_prompt_for_llm = f"{GOLDEN_PERSONA_PROMPT}\n\n--- TASK CONTEXT ---\n{input_data.get('prompt')}\n\nEnsure your response is a valid JSON object."
 
             self.logger.info(f"Sending request to OpenAI model '{self.config.model}'")
             
