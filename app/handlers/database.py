@@ -68,6 +68,12 @@ def update_reflection_recipient(db: Session, reflection_id: uuid.UUID, name: str
         reflection.receiver_name = name
         db.commit()
 
+def update_reflection_summary(db: Session, reflection_id: uuid.UUID, summary: str):
+    reflection = db.query(Reflection).filter(Reflection.reflection_id == reflection_id).first()
+    if reflection:
+        reflection.summary = summary
+        db.commit()
+
 def get_previous_stage(db: Session, reflection_id: uuid.UUID, steps: int) -> int:
     message = db.query(Message.current_stage).filter(Message.reflection_id == reflection_id).order_by(Message.created_at.desc()).offset(steps).first()
     return message.current_stage if message else 0

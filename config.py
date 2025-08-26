@@ -42,19 +42,49 @@ class GlobalIntentClassifierConfig:
 @dataclass
 class LLMConfig:
     """Configuration for the LLM service, loaded from environment variables"""
+    # --- Fields without default values (required) ---
     api_key: str = field(repr=False)
+    jwt_secret_key: str
+    zeptomail_token: str
+    
+    # --- Fields with default values (optional) ---
     provider: str = "openai"
     model: str = "gpt-4o"
+    jwt_algorithm: str = "HS256"
+    jwt_expiration_hours: int = 24
+    zeptomail_from_domain: str = "noreply@sarthi.me"
+    zeptomail_from_name: str = "Sarthi"
+    whatsapp_access_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_template_name: str = "authentication"
 
     @classmethod
     def from_env(cls) -> 'LLMConfig':
         api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
             raise ValueError("OPENAI_API_KEY environment variable is not set")
+        
+        jwt_key = os.getenv('JWT_SECRET_KEY')
+        if not jwt_key:
+            raise ValueError("JWT_SECRET_KEY environment variable is not set")
+
+        zeptomail_t = os.getenv('ZEPTOMAIL_TOKEN')
+        if not zeptomail_t:
+            raise ValueError("ZEPTOMAIL_TOKEN environment variable is not set")
+
         return cls(
             api_key=api_key,
+            jwt_secret_key=jwt_key,
+            zeptomail_token=zeptomail_t,
             provider=os.getenv('LLM_PROVIDER', 'openai'),
-            model=os.getenv('LLM_MODEL', 'gpt-4o')
+            model=os.getenv('LLM_MODEL', 'gpt-4o'),
+            jwt_algorithm=os.getenv('JWT_ALGORITHM', 'HS256'),
+            jwt_expiration_hours=int(os.getenv('JWT_EXPIRATION_HOURS', '24')),
+            zeptomail_from_domain=os.getenv('ZEPTOMAIL_FROM_DOMAIN', 'noreply@sarthi.me'),
+            zeptomail_from_name=os.getenv('ZEPTOMAIL_FROM_NAME', 'Sarthi'),
+            whatsapp_access_token=os.getenv('WHATSAPP_ACCESS_TOKEN', ''),
+            whatsapp_phone_number_id=os.getenv('WHATSAPP_PHONE_NUMBER_ID', ''),
+            whatsapp_template_name=os.getenv('WHATSAPP_TEMPLATE_NAME', 'authentication')
         )
 
 @dataclass

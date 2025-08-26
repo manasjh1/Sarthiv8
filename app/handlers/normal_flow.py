@@ -91,6 +91,10 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
     if current_stage == 16: # SYNTHESIZING (Two-Part, Part 1)
         logger.info(f"Processing Stage 16 (SYNTHESIZING) for reflection {reflection_id}")
         synthesized_msg, _ = await _base_process_and_respond(db, 16, reflection_id, chat_id, request)
+
+        # Save the summary to the reflection table
+        db_handler.update_reflection_summary(db, reflection_id, synthesized_msg)
+        
         db_handler.update_reflection_stage(db, reflection_id, 17)
         prompt_for_stage_17 = await prompt_engine_service.get_prompt_by_stage(stage_id=17)
         final_user_message = f"{synthesized_msg}\n\n{prompt_for_stage_17.prompt}"

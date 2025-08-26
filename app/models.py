@@ -1,7 +1,7 @@
 # app/models.py
 import uuid
 from sqlalchemy import (
-    Column, Integer, String, Boolean, DateTime, ForeignKey, Enum, BigInteger, Text
+    Column, Integer, String, Boolean, DateTime, ForeignKey, Enum, BigInteger, Text, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, declarative_base
@@ -84,3 +84,26 @@ class Feedback(Base):
     feedback_no = Column(Integer, primary_key=True)
     feedback_name = Column(String(256), nullable=False)
     status = Column(Integer, default=1)
+
+class InviteCode(Base):
+    __tablename__ = "invite_codes"
+
+    invite_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    invite_code = Column(String(64), nullable=False, unique=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), unique=True, nullable=True)
+    is_used = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    used_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint('invite_code', name='uq_invite_code'),
+        UniqueConstraint('user_id', name='uq_invite_user_id'),  
+    )
+
+class OTPToken(Base):
+    __tablename__ = "otp_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, unique=True)
+    otp = Column(String(6), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
