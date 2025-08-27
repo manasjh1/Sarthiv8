@@ -102,6 +102,71 @@ class WhatsAppProvider(MessageProvider):
         except Exception as e:
             return SendResult(success=False, error=str(e))
 
+    async def send_reflection_summary(self, recipient: str, sender_name: str, reflection_link: str) -> SendResult:
+        """Send reflection summary using the 'delivered' template"""
+        try:
+            if not self.access_token or not self.phone_number_id:
+                return SendResult(success=False, error="WhatsApp service not configured")
+            
+            # Normalize phone number
+            normalized_phone = self._normalize_phone_number(recipient)
+            if not normalized_phone:
+                return SendResult(success=False, error="Invalid phone number format")
+            
+            # API endpoint
+            url = f"{self.api_url}/{self.phone_number_id}/messages"
+            
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json"
+            }
+            
+            # Payload for 'delivered' template with 2 parameters
+            payload = {
+                "to": normalized_phone,
+                "recipient_type": "individual",
+                "type": "template",
+                "template": {
+                    "language": {
+                        "policy": "deterministic",
+                        "code": "en"
+                    },
+                    "name": "delivered",  # Your template name for reflection delivery
+                    "components": [
+                        {
+                            "type": "body",
+                            "parameters": [
+                                {
+                                    "type": "text",
+                                    "text": sender_name  # First variable: sender name
+                                },
+                                {
+                                    "type": "text", 
+                                    "text": reflection_link  # Second variable: link
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+            
+            logging.info(f"🔍 Sending Reflection Payload: {json.dumps(payload, indent=2)}")
+
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(url, json=payload, headers=headers) as response:
+                    if 200 <= response.status < 300:
+                        logging.info("✅ Reflection sent successfully.")
+                        return SendResult(success=True)
+                    else:
+                        response_text = await response.text()
+                        logging.error(f"❌ Failed to send reflection: {response.status} {response_text}")
+                        return SendResult(success=False, error=response_text)
+
+        except Exception as e:
+            logging.error(f"❌ Exception sending reflection: {e}")
+            return SendResult(success=False, error=str(e))
+
     def validate_recipient(self, recipient: str) -> bool:
         clean_number = re.sub(r'\D', '', recipient)
         return 10 <= len(clean_number) <= 15
