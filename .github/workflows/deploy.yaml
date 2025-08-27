@@ -1,0 +1,113 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches: [ dev ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.7.0
+      with:
+        ssh-private-key: ${{ secrets.EC2_KEY }}
+
+    - name: Add host to known hosts
+      run: |
+        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+    - name: Deploy to EC2
+      run: |
+        ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
+          set -euo pipefail
+
+          # Prepare /opt/sarthi directory
+          sudo mkdir -p /opt/sarthi
+          sudo chown -R ${{ secrets.EC2_USER }}:${{ secrets.EC2_USER }} /opt/sarthi
+          cd /opt/sarthi
+
+          # Stop running service if any
+          sudo systemctl stop sarthi || true
+
+          # Backup current release
+          if [ -d current ]; then
+            mv current backup_$(date +%Y%m%d_%H%M%S)
+          fi
+
+          # Create temporary directory
+          mkdir -p /tmp/sarthi-code
+        '
+
+        # Transfer code from GitHub Actions to EC2
+        rsync -avz --delete \
+          --exclude='.git' \
+          --exclude='venv' \
+          --exclude='__pycache__' \
+          --exclude='.env' \
+          ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/sarthi-code/
+
+        ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
+          # Move code to application directory
+          cp -r /tmp/sarthi-code /opt/sarthi/current
+          rm -rf /tmp/sarthi-code
+          cd /opt/sarthi/current
+
+          # Create Python virtual environment
+          python3.12 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+          # Create .env file with secrets
+          cat > .env << EOF
+          SUPABASE_CONNECTION_STRING=${{ secrets.DATABASE_URL }}
+          JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+          JWT_ALGORITHM=HS256
+          JWT_EXPIRATION_HOURS=1
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          PINECONE_API_KEY=${{ secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX=${{ secrets.PINECONE_INDEX }}
+          PINECONE_NAMESPACE=distress
+          OPENAI_EMBED_MODEL=text-embedding-3-small
+          ZEPTOMAIL_TOKEN=${{ secrets.ZEPTOMAIL_TOKEN }}
+          ZEPTOMAIL_FROM_DOMAIN=noreply@sarthi.me
+          ZEPTOMAIL_FROM_NAME=Sarthi
+          WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_PHONE_NUMBER_ID=${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_TEMPLATE_NAME=authentication
+          EOF
+
+          chmod 600 .env
+          sudo chown -R ${{ secrets.EC2_USER }}:${{ secrets.EC2_USER }} /opt/sarthi/current
+
+          # Test application loads successfully
+          source venv/bin/activate
+          python -c "from app.main import app; print(\"✅ App loaded successfully\")"
+        '
+
+    - name: Start Services and Verify
+      run: |
+        ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
+          sudo systemctl start sarthi
+          sleep 5
+          
+          # Check if service is running
+          if sudo systemctl is-active sarthi > /dev/null; then
+            echo "✅ Service is running successfully"
+            sudo systemctl status sarthi --no-pager -l
+          else
+            echo "❌ Service failed to start"
+            sudo systemctl status sarthi --no-pager -l
+            exit 1
+          fi
+          
+          echo "✅ Deployment completed successfully"
+        '
