@@ -16,7 +16,7 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Setup SSH
-      uses: webfactory/ssh-agent@v0.7.0
+      uses: webfactory/ssh-agent@v0.9.0
       with:
         ssh-private-key: ${{ secrets.EC2_KEY }}
 
@@ -24,25 +24,41 @@ jobs:
       run: |
         ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
+    - name: Create .env file locally
+      run: |
+        cat > .env << EOF
+        SUPABASE_CONNECTION_STRING=${{ secrets.SUPABASE_CONNECTION_STRING }}
+        JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+        JWT_ALGORITHM=${{ secrets.JWT_ALGORITHM }}
+        JWT_EXPIRATION_HOURS=${{ secrets.JWT_EXPIRATION_HOURS }}
+        OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+        OPENAI_EMBED_MODEL=${{ secrets.OPENAI_EMBED_MODEL }}
+        LLM_MODEL=${{ secrets.LLM_MODEL }}
+        PINECONE_API_KEY=${{ secrets.PINECONE_API_KEY }}
+        PINECONE_INDEX=${{ secrets.PINECONE_INDEX }}
+        PINECONE_NAMESPACE=${{ secrets.PINECONE_NAMESPACE }}
+        PROMPT_CONNECTION_TIMEOUT=${{ secrets.PROMPT_CONNECTION_TIMEOUT }}
+        PROMPT_MAX_POOL_CONNECTIONS=${{ secrets.PROMPT_MAX_POOL_CONNECTIONS }}
+        PROMPT_MIN_POOL_CONNECTIONS=${{ secrets.PROMPT_MIN_POOL_CONNECTIONS }}
+        GIC_INTENT_STAGE_ID=${{ secrets.GIC_INTENT_STAGE_ID }}
+        ZEPTOMAIL_FROM_DOMAIN=${{ secrets.ZEPTOMAIL_FROM_DOMAIN }}
+        ZEPTOMAIL_FROM_NAME=${{ secrets.ZEPTOMAIL_FROM_NAME }}
+        WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+        WHATSAPP_PHONE_NUMBER_ID=${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+        WHATSAPP_TEMPLATE_NAME=${{ secrets.WHATSAPP_TEMPLATE_NAME }}
+        EOF
+
     - name: Deploy to EC2
       run: |
         ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
           set -euo pipefail
-
-          # Prepare /opt/sarthi directory
           sudo mkdir -p /opt/sarthi
-          sudo chown -R ${{ secrets.EC2_USER }}:${{ secrets.EC2_USER }} /opt/sarthi
+          sudo chown -R '${{ secrets.EC2_USER }}':'${{ secrets.EC2_USER }}' /opt/sarthi
           cd /opt/sarthi
-
-          # Stop running service if any
           sudo systemctl stop sarthi || true
-
-          # Backup current release
           if [ -d current ]; then
             mv current backup_$(date +%Y%m%d_%H%M%S)
           fi
-
-          # Create temporary directory
           mkdir -p /tmp/sarthi-code
         '
 
@@ -51,46 +67,20 @@ jobs:
           --exclude='.git' \
           --exclude='venv' \
           --exclude='__pycache__' \
-          --exclude='.env' \
           ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/sarthi-code/
 
         ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
-          # Move code to application directory
           cp -r /tmp/sarthi-code /opt/sarthi/current
           rm -rf /tmp/sarthi-code
           cd /opt/sarthi/current
-
-          # Create Python virtual environment
           python3.12 -m venv venv
           source venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
-
-          # Create .env file with secrets
-          cat > .env << EOF
-          SUPABASE_CONNECTION_STRING=${{ secrets.DATABASE_URL }}
-          JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
-          JWT_ALGORITHM=HS256
-          JWT_EXPIRATION_HOURS=1
-          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-          PINECONE_API_KEY=${{ secrets.PINECONE_API_KEY }}
-          PINECONE_INDEX=${{ secrets.PINECONE_INDEX }}
-          PINECONE_NAMESPACE=distress
-          OPENAI_EMBED_MODEL=text-embedding-3-small
-          ZEPTOMAIL_TOKEN=${{ secrets.ZEPTOMAIL_TOKEN }}
-          ZEPTOMAIL_FROM_DOMAIN=noreply@sarthi.me
-          ZEPTOMAIL_FROM_NAME=Sarthi
-          WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }}
-          WHATSAPP_PHONE_NUMBER_ID=${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
-          WHATSAPP_TEMPLATE_NAME=authentication
-          EOF
-
           chmod 600 .env
-          sudo chown -R ${{ secrets.EC2_USER }}:${{ secrets.EC2_USER }} /opt/sarthi/current
-
-          # Test application loads successfully
+          sudo chown -R '${{ secrets.EC2_USER }}':'${{ secrets.EC2_USER }}' /opt/sarthi/current
           source venv/bin/activate
-          python -c "from app.main import app; print(\"✅ App loaded successfully\")"
+          python -c "from app.main import app; print(\"App loaded successfully\")"
         '
 
     - name: Start Services and Verify
@@ -98,16 +88,13 @@ jobs:
         ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
           sudo systemctl start sarthi
           sleep 5
-          
-          # Check if service is running
           if sudo systemctl is-active sarthi > /dev/null; then
-            echo "✅ Service is running successfully"
+            echo "Service is running successfully"
             sudo systemctl status sarthi --no-pager -l
           else
-            echo "❌ Service failed to start"
+            echo "Service failed to start"
             sudo systemctl status sarthi --no-pager -l
             exit 1
           fi
-          
-          echo "✅ Deployment completed successfully"
+          echo "Deployment completed successfully"
         '
