@@ -14,56 +14,49 @@ logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
 
-# Global cleanup task reference
 cleanup_task = None
 
-# Background cleanup task
 async def cleanup_expired_otps():
     """Background task to clean up expired OTP tokens every 5 minutes."""
     auth_storage = AuthStorage()
     
     while True:
         try:
-            logging.info("🔄 Starting OTP cleanup task...")
+            logging.info("Starting OTP cleanup task...")
             
-            # Get a database session for cleanup
             db = SessionLocal()
             try:
                 cleaned_count = auth_storage.cleanup_expired_otps(db)
                 if cleaned_count > 0:
-                    logging.info(f"✅ Cleaned up {cleaned_count} expired OTP records")
+                    logging.info(f"Cleaned up {cleaned_count} expired OTP records")
                 else:
-                    logging.info("🔄 No expired OTPs to clean up")
+                    logging.info("No expired OTPs to clean up")
             finally:
                 db.close()
                 
         except Exception as e:
-            logging.error(f"❌ Error during OTP cleanup: {str(e)}", exc_info=True)
+            logging.error(f"Error during OTP cleanup: {str(e)}", exc_info=True)
         
-        # Wait 5 minutes before next cleanup
         await asyncio.sleep(300)
 
-# --- Startup and Shutdown Events ---
 @app.on_event("startup")
 async def startup_event():
     """Initialize services and start background tasks."""
     global cleanup_task
     
-    logging.info("🚀 Application startup: Initializing services...")
+    logging.info("Application startup: Initializing services...")
     
     try:
-        # Initialize services
         await prompt_engine_service.initialize()
-        logging.info("✅ Prompt Engine Service initialized")
+        logging.info("Prompt Engine Service initialized")
         
-        # Start background cleanup task
         cleanup_task = asyncio.create_task(cleanup_expired_otps())
-        logging.info("✅ Background cleanup task started")
+        logging.info("Background cleanup task started")
         
-        logging.info("🎉 All services initialized successfully!")
+        logging.info("All services initialized successfully!")
         
     except Exception as e:
-        logging.error(f"❌ Failed to initialize services: {str(e)}", exc_info=True)
+        logging.error(f"Failed to initialize services: {str(e)}", exc_info=True)
         raise
 
 @app.on_event("shutdown")
@@ -71,31 +64,29 @@ async def shutdown_event():
     """Shutdown services and cleanup background tasks."""
     global cleanup_task
     
-    logging.info("🔄 Application shutdown: Closing service connections...")
+    logging.info("Application shutdown: Closing service connections...")
     
     try:
-        # Cancel background cleanup task
         if cleanup_task and not cleanup_task.done():
             cleanup_task.cancel()
             try:
                 await cleanup_task
             except asyncio.CancelledError:
-                logging.info("✅ Background cleanup task cancelled")
+                logging.info("Background cleanup task cancelled")
         
-        # Shutdown services
         await prompt_engine_service.shutdown()
-        logging.info("✅ Prompt Engine Service shutdown")
+        logging.info("Prompt Engine Service shutdown")
         
         await global_intent_classifier.shutdown()
-        logging.info("✅ Global Intent Classifier shutdown")
+        logging.info("Global Intent Classifier shutdown")
         
         await llm_service.shutdown()
-        logging.info("✅ LLM Service shutdown")
+        logging.info("LLM Service shutdown")
         
-        logging.info("🎉 All service connections closed successfully!")
+        logging.info("All service connections closed successfully!")
         
     except Exception as e:
-        logging.error(f"❌ Error during shutdown: {str(e)}", exc_info=True)
+        logging.error(f"Error during shutdown: {str(e)}", exc_info=True)
 
 # Include the authentication router
 app.include_router(auth_router)
@@ -116,10 +107,10 @@ async def chat_endpoint(
         user_id = token_data["user_id"]
         chat_id = token_data["chat_id"]
         
-        logging.info(f"🔍 Chat request - User: {user_id}, Chat: {chat_id}, Reflection: {request.reflection_id}")
+        logging.info(f"Chat request - User: {user_id}, Chat: {chat_id}, Reflection: {request.reflection_id}")
 
     except (ValueError, KeyError, AttributeError) as e:
-        logging.error(f"❌ Invalid token data: {e}")
+        logging.error(f"Invalid token data: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid token data: {e}")
 
     # Process the message through the orchestration layer
