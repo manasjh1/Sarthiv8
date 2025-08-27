@@ -1,4 +1,3 @@
-# app/models.py
 import uuid
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, ForeignKey, Enum, BigInteger, Text, UniqueConstraint
@@ -107,3 +106,16 @@ class OTPToken(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, unique=True)
     otp = Column(String(6), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+# NEW: Temporary OTP storage for new users (to replace in-memory storage)
+class TempOTP(Base):
+    __tablename__ = "temp_otps"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    contact = Column(String(256), nullable=False, unique=True)  # Normalized contact (email or phone)
+    otp = Column(String(6), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    __table_args__ = (
+        UniqueConstraint('contact', name='uq_temp_otp_contact'),
+    )
