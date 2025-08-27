@@ -8,6 +8,7 @@ from app.schemas import SendOTPRequest, SendOTPResponse, VerifyOTPRequest, Verif
 from app.auth.manager import AuthManager
 from app.auth.utils import create_access_token, verify_invite_token, create_invite_token
 from app.models import User, InviteCode, Chat
+from sqlalchemy import func 
 import logging
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -225,7 +226,7 @@ async def verify_otp_and_authenticate(
                     logging.info(f"🔍 Marking invite as used and transferring OTP data")
                     invite.is_used = True
                     invite.user_id = user.user_id
-                    invite.used_at = db.query(db.func.now()).scalar()
+                    invite.used_at = db.query(func.now()).scalar()
                     
                     # Transfer OTP data (this might clean up temporary storage)
                     auth_manager.storage.transfer_to_database(contact, user.user_id, str(invite.invite_id), db)

@@ -78,6 +78,9 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
     if current_stage == 5: # NAME_VALIDATION
         logger.info(f"Processing Stage 5 (NAME_VALIDATION) for reflection {reflection_id}")
         sarthi_message, system_msg = await _base_process_and_respond(db, 5, reflection_id, chat_id, request)
+        current_reflection = db_handler.get_reflection_by_id(db, reflection_id)
+        next_playbook_stage = _get_first_playbook_stage(current_reflection.flow_type)
+        db_handler.update_reflection_stage(db, reflection_id, next_playbook_stage)
         if system_msg.get("is_valid_name") == "yes":
             db_handler.update_reflection_recipient(db, reflection_id, request.message)
             # Get the flow_type to determine which playbook to use
@@ -114,11 +117,80 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
         logger.info(f"Processing Stage 18 (AWAITING_DELIVERY_TONE) for reflection {reflection_id}")
         return await process_and_respond(db, 18, reflection_id, chat_id, request)
 
-    if current_stage == 19: # AWAITING_PREAMBLE_DECISION
+    if current_stage == 19:  # AWAITING_PREAMBLE_DECISION
         logger.info(f"Processing Stage 19 (AWAITING_PREAMBLE_DECISION) for reflection {reflection_id}")
-        response = await process_and_respond(db, 19, reflection_id, chat_id, request)
-        await delivery_service.send_reflection(reflection_id)
-        return response
+
+        try:
+            # Check if user provided input
+            if request.data and len(request.data) > 0:
+                user_choice = request.data[0]
+                
+                # Handle identity reveal choice
+                if "reveal_name" in user_choice:
+                    reveal_choice = user_choice.get("reveal_name")
+                    provided_name = user_choice.get("name")
+                    result = await delivery_service.process_identity_choice(
+                        reflection_id=reflection_id,
+                        reveal_choice=reveal_choice,
+                        provided_name=provided_name,
+                        db=db
+                    )
+                
+                # Handle delivery mode choice
+                elif "delivery_mode" in user_choice:
+                    delivery_mode = user_choice.get("delivery_mode")
+                    recipient_contact = {
+                        "recipient_email": user_choice.get("recipient_email"),
+                        "recipient_phone": user_choice.get("recipient_phone")
+                    }
+                    result = await delivery_service.process_delivery_choice(
+                        reflection_id=reflection_id,
+                        delivery_mode=delivery_mode,
+                        recipient_contact=recipient_contact,
+                        db=db
+                    )
+                
+                # Handle third-party email
+                elif "email" in user_choice:
+                    result = await delivery_service.process_third_party_email(
+                        reflection_id=reflection_id,
+                        third_party_email=user_choice.get("email"),
+                        db=db
+                    )
+                
+                else:
+                    # No recognized choice, show initial options
+                    result = await delivery_service.send_reflection(
+                        reflection_id=reflection_id,
+                        db=db
+                    )
+            
+            else:
+                # No user input, show initial options
+                result = await delivery_service.send_reflection(
+                    reflection_id=reflection_id,
+                    db=db
+                )
+            
+            return MessageResponse(
+                success=result.get("success", True),
+                reflection_id=result["reflection_id"],
+                sarthi_message=result["sarthi_message"],
+                current_stage=result.get("current_stage", 19),
+                next_stage=result.get("next_stage", 19),
+                data=result.get("data", [])
+            )
+            
+        except Exception as e:
+            logger.error(f"Delivery service failed: {str(e)}")
+            return MessageResponse(
+                success=False,
+                reflection_id=str(reflection_id),
+                sarthi_message="Delivery failed. Please try again.",
+                current_stage=19,
+                next_stage=19
+            )
+
 
     # --- Standard Playbook & Other Synthesis Steps ---
     if (6 <= current_stage <= 15) or (current_stage in [17, 18, 20]):

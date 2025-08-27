@@ -178,6 +178,45 @@ class AuthManager:
             logging.error(f"Error sending OTP via {channel}: {str(e)}", exc_info=True)
             return AuthResult(success=False, message=f"Failed to send OTP via {channel}")
 
+    
+    async def send_feedback_email(self, sender_name: str, receiver_name: str, receiver_email: str, feedback_summary: str) -> AuthResult:
+        """Send feedback email with 20%-80% split - ASYNC"""
+        try:
+            logging.info(f"Sending feedback email to: {receiver_email}")
+            
+            # Simple 20%-80% split
+            split_point = int(len(feedback_summary) * 0.2)
+            feedback_preview = feedback_summary[:split_point]
+            feedback_remaining = feedback_summary[split_point:]
+            
+            # Template data
+            template_data = {
+                "sender_name": sender_name,
+                "receiver_name": receiver_name,
+                "feedback_preview": feedback_preview,
+                "feedback_remaining": feedback_remaining
+            }
+            
+            # Load template and send email - ASYNC
+            content = self._load_template("feedback_email.html", template_data)
+            metadata = {
+                "subject": f"You have feedback from {sender_name}",
+                "recipient_name": receiver_name
+            }
+            
+            result = await self.email_provider.send(receiver_email, content, metadata)
+            
+            if result.success:
+                return AuthResult(success=True, message=f"Feedback email sent successfully to {receiver_email}")
+            else:
+                logging.error(f"Email send failed: {result.error}")
+                return AuthResult(success=False, message=f"Failed to send feedback email: {result.error}")
+                
+        except Exception as e:
+            logging.error(f"Exception in send_feedback_email: {str(e)}")
+            return AuthResult(success=False, message=f"Failed to send feedback email: {str(e)}")
+    
+    
     def _generate_otp(self) -> str:
         """Generate 6-digit OTP"""
         otp = ''.join(random.choices(string.digits, k=6))

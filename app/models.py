@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import (
-    Column, Integer, String, Boolean, DateTime, ForeignKey, Enum, BigInteger, Text, UniqueConstraint
+    Column, Integer, String, Boolean, DateTime, ForeignKey, Enum, BigInteger, Text, UniqueConstraint, SmallInteger
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, declarative_base
@@ -64,6 +64,9 @@ class Reflection(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     is_delivered = Column(Integer, default=0, nullable=False)
+    delivery_mode = Column(SmallInteger, nullable=True)  # 0=Email, 1=WhatsApp, 2=Both, 3=Private, 4=Third-party
+    is_anonymous = Column(Boolean, nullable=True)  # True=anonymous, False=named, None=not decided
+    sender_name = Column(String(256), nullable=True)  # Name to show if not anonymous
     chat = relationship("Chat", back_populates="reflections")
     messages = relationship("Message", back_populates="reflection", cascade="all, delete-orphan")
 
