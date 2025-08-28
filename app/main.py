@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.orchestration import MessageOrchestrator
 from app.schemas import MessageRequest, MessageResponse
@@ -13,6 +14,17 @@ from app.auth.storage import AuthStorage
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[              
+        "https://app.sarthi.me"
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 cleanup_task = None
 
@@ -91,6 +103,12 @@ async def shutdown_event():
 # Include the authentication router
 app.include_router(auth_router)
 
+# Health check endpoint (useful for deployment)
+@app.get("/health")
+async def health_check():
+    """Simple health check endpoint"""
+    return {"status": "healthy", "message": "Sarthi backend is running"}
+
 # Main chat endpoint
 @app.post("/chat", response_model=MessageResponse)
 async def chat_endpoint(
@@ -116,16 +134,16 @@ async def chat_endpoint(
     # Process the message through the orchestration layer
     orchestrator = MessageOrchestrator(db)
     try:
-        logging.info(f"🔍 Processing message through orchestrator...")
+        logging.info(f"Processing message through orchestrator...")
         response = await orchestrator.process_message(request, user_id, chat_id)
         
         if response.success:
-            logging.info(f"✅ Message processed successfully - Reflection: {response.reflection_id}")
+            logging.info(f"Message processed successfully - Reflection: {response.reflection_id}")
         else:
-            logging.warning(f"⚠️ Message processing had issues - Reflection: {response.reflection_id}")
+            logging.warning(f"Message processing had issues - Reflection: {response.reflection_id}")
         
         return response
         
     except Exception as e:
-        logging.error(f"❌ Orchestrator error: {str(e)}", exc_info=True)
+        logging.error(f"Orchestrator error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
