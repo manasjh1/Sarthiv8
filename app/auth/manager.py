@@ -1,4 +1,3 @@
-# app/auth/manager.py - COMPLETE FIXED VERSION
 import os
 import random
 import string
@@ -36,7 +35,7 @@ class AuthManager:
         logging.info("✅ AuthManager initialized")
     
     async def send_otp(self, contact: str, invite_token: str = None, db: Session = None) -> AuthResult:
-        """Send OTP with enhanced logging and error handling."""
+        """Send OTP with user existence check to prevent unnecessary API calls."""
         try:
             channel = self.utils.detect_channel(contact)
             normalized_contact = self.utils.normalize_contact(contact, channel)
@@ -45,8 +44,8 @@ class AuthManager:
             
             if not self._validate_contact(normalized_contact, channel):
                 logging.warning(f"🔍 Invalid contact format: {contact}")
-                return AuthResult(success=False, message="Invalid contact format")
-            
+                return AuthResult(success=False, message="User not registered")
+
             user = self.utils.find_user_by_contact(normalized_contact, db)
             
             if user:
@@ -68,9 +67,38 @@ class AuthManager:
                 logging.info(f"✅ OTP sent successfully to existing user")
                 return AuthResult(success=True, message="OTP sent successfully.", contact_type=channel)
             
-            elif invite_token:
-                # === NEW USER WITH INVITE ===
-                logging.info(f"🔍 Sending OTP to new user with invite token")
+            else:
+                # === NEW USER LOGIC ===
+                if not invite_token:
+                    # FIXED: Reject immediately without sending OTP
+                    logging.warning(f"🔍 Unregistered user attempted OTP without invite: {normalized_contact}")
+                    return AuthResult(
+                        success=False, 
+                        message="This contact is not registered. Please use a valid invite code to create an account.",
+                        error_code="USER_NOT_FOUND_NO_INVITE"
+                    )
+                
+                # ADDITIONAL CHECK: Validate invite token before sending OTP
+                try:
+                    from app.auth.utils import verify_invite_token
+                    invite_data = verify_invite_token(invite_token)
+                    
+                    # Check if invite exists and is unused
+                    invite = db.query(InviteCode).filter(InviteCode.invite_id == invite_data["invite_id"]).first()
+                    if not invite:
+                        logging.warning(f"🔍 Invalid invite ID: {invite_data['invite_id']}")
+                        return AuthResult(success=False, message="Invalid invite code.", error_code="INVALID_INVITE")
+                    
+                    if invite.is_used:
+                        logging.warning(f"🔍 Invite already used: {invite_data['invite_id']}")
+                        return AuthResult(success=False, message="This invite code has already been used.", error_code="INVITE_ALREADY_USED")
+                    
+                except Exception as invite_error:
+                    logging.error(f"🔍 Invite validation failed: {invite_error}")
+                    return AuthResult(success=False, message="User is not registered.", error_code="INVALID_INVITE_TOKEN")
+
+                # NOW send OTP for valid new user with valid invite
+                logging.info(f"🔍 Sending OTP to new user with valid invite token")
                 
                 otp = self._generate_otp()
                 logging.info(f"🔍 Generated OTP: {otp}")
@@ -84,13 +112,8 @@ class AuthManager:
                     logging.error(f"🔍 Failed to send OTP to new user: {result.error}")
                     return AuthResult(success=False, message=f"Failed to send OTP: {result.error}")
                 
-                logging.info(f"✅ OTP sent successfully to new user")
+                logging.info(f"✅ OTP sent successfully to new user with valid invite")
                 return AuthResult(success=True, message="OTP sent successfully.", contact_type=channel)
-            
-            else:
-                # === UNREGISTERED USER WITHOUT INVITE ===
-                logging.warning(f"🔍 Unregistered user attempted OTP without invite: {normalized_contact}")
-                return AuthResult(success=False, message="This contact is not registered. An invite token is required to sign up.")
 
         except Exception as e:
             logging.error(f"Error in send_otp: {str(e)}", exc_info=True)
