@@ -56,7 +56,10 @@ jobs:
           sudo mkdir -p /opt/sarthi
           sudo chown -R '${{ secrets.EC2_USER }}':'${{ secrets.EC2_USER }}' /opt/sarthi
           cd /opt/sarthi
-          sudo systemctl stop sarthi || true
+          
+          # Stop PM2 backend before updating code
+          pm2 stop sarthi-backend || true
+          
           if [ -d current ]; then
             mv current backup_$(date +%Y%m%d_%H%M%S)
           fi
@@ -87,15 +90,54 @@ jobs:
     - name: Start Services and Verify
       run: |
         ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
-          sudo systemctl start sarthi
-          sleep 5
-          if sudo systemctl is-active sarthi > /dev/null; then
-            echo "Service is running successfully"
-            sudo systemctl status sarthi --no-pager -l
+          cd /opt/sarthi/current
+          
+          # Activate virtual environment
+          source venv/bin/activate
+          
+          # Delete old PM2 process if it exists
+          pm2 delete sarthi-backend || true
+          
+          # Start the backend with PM2
+          pm2 start "uvicorn app.main:app --host 0.0.0.0 --port 8000" --name "sarthi-backend"
+          
+          # Wait for startup
+          sleep 10
+          
+          # Check if backend is running
+          if pm2 list | grep -q "sarthi-backend.*online"; then
+            echo "Backend service is running successfully"
+            pm2 list | grep sarthi-backend
+            
+            # Test the health endpoint
+            echo "Testing backend health..."
+            if curl -f http://localhost:8000/health > /dev/null 2>&1; then
+              echo "Backend health check passed"
+            else
+              echo "Backend health check failed, trying basic connection..."
+              if curl -f http://localhost:8000/ > /dev/null 2>&1; then
+                echo "Backend is responding to basic requests"
+              else
+                echo "Backend is not responding"
+                pm2 logs sarthi-backend --lines 20
+                exit 1
+              fi
+            fi
+            
+            # Show final status
+            echo "PM2 Process Status:"
+            pm2 list
+            echo "Recent logs:"
+            pm2 logs sarthi-backend --lines 5
+            
           else
-            echo "Service failed to start"
-            sudo systemctl status sarthi --no-pager -l
+            echo "Backend service failed to start"
+            echo "PM2 Status:"
+            pm2 list
+            echo "Error logs:"
+            pm2 logs sarthi-backend --lines 30
             exit 1
           fi
+          
           echo "Deployment completed successfully"
         '
