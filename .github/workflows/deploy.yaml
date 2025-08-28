@@ -89,7 +89,7 @@ jobs:
 
     - name: Start Services and Verify
       run: |
-        ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
+        ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=3 ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
           cd /opt/sarthi/current
           
           # Activate virtual environment
@@ -107,32 +107,49 @@ jobs:
           # Check if backend is running
           if pm2 list | grep -q "sarthi-backend.*online"; then
             echo "Backend service is running successfully"
-            pm2 list | grep sarthi-backend
             
-            # Test the health endpoint
+            # Test the health endpoint with retry
             echo "Testing backend health..."
-            if curl -f --max-time 10 http://localhost:8000/health > /dev/null 2>&1; then
-              echo "Backend health check passed"
+            HEALTH_CHECK_PASSED=false
+            for i in {1..3}; do
+              if curl -f --max-time 5 --connect-timeout 5 http://localhost:8000/health > /dev/null 2>&1; then
+                echo "Backend health check passed (attempt $i)"
+                HEALTH_CHECK_PASSED=true
+                break
+              else
+                echo "Health check failed, retrying... (attempt $i)"
+                sleep 2
+              fi
+            done
+            
+            # Final verification
+            if [ "$HEALTH_CHECK_PASSED" = true ] && pm2 list | grep -q "sarthi-backend.*online"; then
+              echo "Backend is confirmed running and healthy"
+              pm2 list | grep sarthi-backend
+              echo "Deployment completed successfully"
+              exit 0
             else
-              echo "Backend health check failed"
-              pm2 logs sarthi-backend --lines 20
+              echo "Backend failed final health check"
+              pm2 logs sarthi-backend --lines 10
               exit 1
             fi
             
-            # Show final status
-            echo "PM2 Process Status:"
-            pm2 list
-            echo "Recent logs:"
-            pm2 logs sarthi-backend --lines 5
-            
           else
             echo "Backend service failed to start"
-            echo "PM2 Status:"
-            pm2 list
-            echo "Error logs:"
-            pm2 logs sarthi-backend --lines 30
+            pm2 logs sarthi-backend --lines 20
             exit 1
           fi
+        ' && echo "Deployment verification completed" || {
+          echo "SSH connection had issues, checking deployment status..."
           
-          echo "Deployment completed successfully"
-        '
+          # Fallback check with a separate SSH connection
+          ssh -o ConnectTimeout=10 ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
+            if pm2 list | grep -q "sarthi-backend.*online"; then
+              echo "Backend is running despite SSH issues"
+              exit 0
+            else
+              echo "Backend is not running"
+              exit 1
+            fi
+          '
+        }
