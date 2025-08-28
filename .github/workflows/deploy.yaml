@@ -114,11 +114,12 @@ jobs:
             if curl -f http://localhost:8000/health > /dev/null 2>&1; then
               echo "Backend health check passed"
             else
-              echo "Backend health check failed, trying basic connection..."
-              if curl -f http://localhost:8000/ > /dev/null 2>&1; then
-                echo "Backend is responding to basic requests"
+              echo "Backend health check failed, checking if server is responding..."
+              # Use -s to suppress curl output and check exit code only
+              if curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/ | grep -q "404"; then
+                echo "Backend is responding (404 is expected for root path)"
               else
-                echo "Backend is not responding"
+                echo "Backend is not responding at all"
                 pm2 logs sarthi-backend --lines 20
                 exit 1
               fi
