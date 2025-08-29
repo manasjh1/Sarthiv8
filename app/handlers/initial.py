@@ -225,7 +225,7 @@ async def handle_initial_flow(db: Session, request: MessageRequest, user_id: uui
     latest_reflection = db_handler.get_latest_reflection_by_chat_id(db, chat_id)
     
     # Allow new reflection creation for completed (1) OR locked (2) reflections
-    if not latest_reflection or latest_reflection.is_delivered in [1, 2]:
+    if not latest_reflection or latest_reflection.is_delivered in [1, 2, 3]:
         return await handle_create_new_reflection(db, chat_id)
     
     # Only ask to continue for active/incomplete reflections (is_delivered = 0)
