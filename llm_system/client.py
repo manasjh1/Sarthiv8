@@ -1,6 +1,3 @@
-# =======================================================================
-# llm_system/client.py (Updated with Response Normalization)
-# =======================================================================
 from __future__ import annotations
 import json
 import logging
@@ -8,7 +5,7 @@ from typing import Dict, Any, TYPE_CHECKING
 from .persona import GOLDEN_PERSONA_PROMPT
 import openai
 
-# This block is only processed by type-checkers, not when the code runs.
+
 if TYPE_CHECKING:
     from config import LLMConfig
 
@@ -65,7 +62,6 @@ class LLMClient:
                 raw_response = json.loads(llm_response_content)
                 self.logger.info(f"Raw LLM response: {raw_response}")
                 
-                # Normalize response to expected format
                 normalized_response = self._normalize_response(raw_response, reflection_id)
                 self.logger.info(f"Normalized response: {normalized_response}")
                 
@@ -86,15 +82,13 @@ class LLMClient:
             "reflection_id": "..."
         }
         """
-        # If already in correct format, return as-is
+        
         if "system_response" in raw_response and "user_response" in raw_response:
             raw_response["reflection_id"] = reflection_id
             return raw_response
         
-        # Extract system data from various response formats
         system_response = self._extract_system_data(raw_response)
         
-        # Extract user message from various response formats
         user_message = self._extract_user_message(raw_response)
         
         return {
@@ -109,18 +103,15 @@ class LLMClient:
         """Extract system data from various response formats"""
         system_data = {}
         
-        # Handle Stage 1 context extraction
         for key in ["recipient_name", "relationship", "emotions", "intent"]:
             if key in raw_response:
                 system_data[key] = raw_response[key]
         
-        # Handle Stage 5 name validation (convert isValidName to is_valid_name)
         if "isValidName" in raw_response:
             system_data["is_valid_name"] = "yes" if raw_response["isValidName"] else "no"
         elif "is_valid_name" in raw_response:
             system_data["is_valid_name"] = raw_response["is_valid_name"]
         
-        # Handle other common system fields
         system_fields = [
             "intent", "confidence", "analysis", "validation", "classification",
             "extracted_data", "metadata", "assessment", "recommendation"
@@ -135,14 +126,12 @@ class LLMClient:
     def _extract_user_message(self, raw_response: Dict[str, Any]) -> str:
         """Extract user message from various response formats"""
         
-        # Priority order for extracting user message
         message_fields = ["message", "response", "user_message", "reply", "output"]
         
         for field in message_fields:
             if field in raw_response and raw_response[field]:
                 return str(raw_response[field])
         
-        # If no message found, return a default empathetic response
         return "I hear what you're sharing with me."
 
     async def _mock_llm_failure_response(self, reflection_id: str) -> str:
