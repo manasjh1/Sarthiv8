@@ -136,9 +136,38 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
                         db=db
                     )
                 
+                # Handle name input (when user chose reveal but didn't provide name initially)
+                elif "name" in user_choice:
+                    result = await delivery_service.process_identity_choice(
+                        reflection_id=reflection_id,
+                        reveal_choice=True,
+                        provided_name=user_choice.get("name"),
+                        db=db
+                    )
+                
                 # Handle delivery mode choice
                 elif "delivery_mode" in user_choice:
                     delivery_mode = user_choice.get("delivery_mode")
+                    
+                    # Validate required contact info
+                    if delivery_mode in [0, 2] and not user_choice.get("recipient_email"):
+                        return MessageResponse(
+                            success=False,
+                            reflection_id=str(reflection_id),
+                            sarthi_message="Email address is required for email delivery.",
+                            current_stage=19,
+                            next_stage=19
+                        )
+                    
+                    if delivery_mode in [1, 2] and not user_choice.get("recipient_phone"):
+                        return MessageResponse(
+                            success=False,
+                            reflection_id=str(reflection_id),
+                            sarthi_message="Phone number is required for WhatsApp delivery.",
+                            current_stage=19,
+                            next_stage=19
+                        )
+                    
                     recipient_contact = {
                         "recipient_email": user_choice.get("recipient_email"),
                         "recipient_phone": user_choice.get("recipient_phone")
@@ -190,7 +219,6 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
                 current_stage=19,
                 next_stage=19
             )
-
 
     # --- Standard Playbook & Other Synthesis Steps ---
     if (6 <= current_stage <= 15) or (current_stage in [17, 18, 20]):
