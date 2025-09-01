@@ -57,6 +57,7 @@ async def outbox(current_user: User = Depends(get_current_user), db: Session = D
     try:
         # Get reflections sent by this user
         sent_reflections = db.query(Reflection).join(Chat).filter(
+            Reflection.summary.isnot(None),
             Chat.user_id == current_user.user_id
         ).order_by(Reflection.created_at.desc()).all()
         
