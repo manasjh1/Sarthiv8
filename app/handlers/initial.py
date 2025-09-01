@@ -237,7 +237,7 @@ async def handle_incomplete_reflection(db: Session, request: MessageRequest, ref
         return await process_and_respond(db, reflection.current_stage, reflection.reflection_id, chat_id, request)
     if user_choice == "0":
         return await handle_create_new_reflection(db, chat_id)
-    return MessageResponse(success=True, reflection_id=str(reflection.reflection_id), sarthi_message="Welcome back! Continue?", data=[{"choice": "1", "label": "Yes"}, {"choice": "0", "label": "No"}])
+    return MessageResponse(success=True, reflection_id=str(reflection.reflection_id), sarthi_message="Welcome back! Do you want to continue the previous chat?", data=[{"choice": "1", "label": "Yes"}, {"choice": "0", "label": "No"}])
 
 async def handle_create_new_reflection(db: Session, chat_id: uuid.UUID) -> MessageResponse:
     reflection_id = db_handler.create_new_reflection(db, chat_id)
