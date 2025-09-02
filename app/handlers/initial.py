@@ -246,7 +246,13 @@ async def handle_incomplete_reflection(db: Session, request: MessageRequest, ref
 
 
     if user_choice == "1":
-        return await process_and_respond(db, reflection.current_stage, reflection.reflection_id, chat_id, request)
+        clean_request = MessageRequest(
+            reflection_id=str(reflection.reflection_id),
+            message="",  # Empty message since we're continuing from where we left off
+            data=[]      # No data since we already processed the choice
+        )
+        return await process_and_respond(db, reflection.current_stage, reflection.reflection_id, chat_id, clean_request)
+    
     if user_choice == "0":
         return await handle_create_new_reflection(db, chat_id)
     return MessageResponse(success=True, reflection_id=str(reflection.reflection_id), sarthi_message="Welcome back! Do you want to continue the previous chat?", data=[{"choice": "1", "label": "Yes"}, {"choice": "0", "label": "No"}])

@@ -45,6 +45,10 @@ class LLMClient:
             user_message = input_data.get("user_message", "")
             
             final_prompt_for_llm = f"{GOLDEN_PERSONA_PROMPT}\n\n--- TASK CONTEXT ---\n{input_data.get('prompt')}\n\nEnsure your response is a valid JSON object."
+            print(f"🚨 LLM_CLIENT: Calling OpenAI with model: {self.config.model}")
+            print(f"🚨 LLM_CLIENT: User message: {user_message}")
+            print(f"🚨 LLM_CLIENT: Final prompt length: {len(final_prompt_for_llm)}")
+            
 
             self.logger.info(f"Sending request to OpenAI model '{self.config.model}'")
             
@@ -57,12 +61,16 @@ class LLMClient:
                 response_format={"type": "json_object"}
             )
             llm_response_content = response.choices[0].message.content
+            print(f"🚨 LLM_CLIENT: Raw OpenAI response: {llm_response_content}")
+            
             
             if llm_response_content:
                 raw_response = json.loads(llm_response_content)
+                print(f"🚨 LLM_CLIENT: Parsed OpenAI response: {raw_response}")
                 self.logger.info(f"Raw LLM response: {raw_response}")
                 
                 normalized_response = self._normalize_response(raw_response, reflection_id)
+                print(f"🚨 LLM_CLIENT: Normalized response: {normalized_response}")
                 self.logger.info(f"Normalized response: {normalized_response}")
                 
                 return json.dumps(normalized_response)
@@ -107,16 +115,19 @@ class LLMClient:
             if key in raw_response:
                 system_data[key] = raw_response[key]
         
+        # Handle both isValidName and isValid formats
         if "isValidName" in raw_response:
             system_data["is_valid_name"] = "yes" if raw_response["isValidName"] else "no"
+        elif "isValid" in raw_response:
+            system_data["is_valid_name"] = "yes" if raw_response["isValid"] else "no"
         elif "is_valid_name" in raw_response:
             system_data["is_valid_name"] = raw_response["is_valid_name"]
-        
+
         system_fields = [
             "intent", "confidence", "analysis", "validation", "classification",
             "extracted_data", "metadata", "assessment", "recommendation"
         ]
-        
+
         for field in system_fields:
             if field in raw_response and field not in system_data:
                 system_data[field] = raw_response[field]

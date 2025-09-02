@@ -16,7 +16,13 @@ from app.auth.storage import AuthStorage
 from app.auth.api import router as auth_router
 from app.endpoints import invite, user, reflection
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+orchestrator_logger = logging.getLogger('app.orchestration')
+orchestrator_logger.setLevel(logging.INFO)
 
 app = FastAPI(
     title="Sarthi V8 API",
