@@ -23,8 +23,18 @@ async def handle_venting_sanctuary(db: Session, request: MessageRequest, chat_id
     
     logger.info(f"🏛️ Entering venting sanctuary for reflection {reflection_id}")
     
-    # Save user message first
-    db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage)
+     # Store user text message first (if any)
+    if request.message and request.message.strip():
+        db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage)
+        logger.info(f"✅ Stored venting message: {request.message}")
+    
+    # Store choice data (if any) - though venting usually doesn't have structured choices
+    if request.data and len(request.data) > 0:
+        choice_data = request.data[0]
+        # Only store if it's a meaningful choice (not delivery-related)
+        if not any(key in choice_data for key in ["delivery_mode", "reveal_name", "recipient_email", "recipient_phone"]):
+            db_handler.save_user_choice_message(db, reflection_id, choice_data, current_stage)
+            logger.info(f"✅ Stored venting choice: {choice_data}")
     
     # Check for inactivity
     last_message = db_handler.get_last_user_message(db, reflection_id)
@@ -100,51 +110,6 @@ async def handle_venting_sanctuary(db: Session, request: MessageRequest, chat_id
             from app.handlers import normal_flow
             return await normal_flow.handle_normal_flow(db, request, chat_id)
             
-            # Get stage 2 prompt instead of using LLM user_response
-            # try:
-            #     stage_2_response = await prompt_engine_service.process_dict_request({"stage_id": 2, "data": {}})
-            #     stage_2_prompt = stage_2_response.get("prompt", "How are you feeling right now?")
-            #     logger.info(f"📝 Retrieved stage 2 prompt: '{stage_2_prompt[:50]}...'")
-                
-            #     # Save the stage 2 prompt as Sarthi's response
-            #     db_handler.save_message(db, reflection_id, stage_2_prompt, sender=1, stage_no=2)
-                
-            #     return MessageResponse(
-            #         success=True,
-            #         reflection_id=str(reflection_id),
-            #         sarthi_message=stage_2_prompt,
-            #         current_stage=2,
-            #         next_stage=2,
-            #         data=[{
-            #             "transition": "venting_to_normal_flow",
-            #             "detected_intent": intent,
-            #             "extracted_data": {
-            #                 "recipient_name": system_response.get("recipient_name"),
-            #                 "relationship": system_response.get("relationship"), 
-            #                 "emotions": system_response.get("emotions")
-            #             }
-            #         }]
-            #     )
-                
-            # except Exception as e:
-            #     logger.error(f"Failed to get stage 2 prompt: {e}")
-            #     # Fallback to a default transition message
-            #     fallback_msg = "I can see you're ready to focus on someone specific. How are you feeling about this situation?"
-                
-            #     db_handler.save_message(db, reflection_id, fallback_msg, sender=1, stage_no=2)
-                
-            #     return MessageResponse(
-            #         success=True,
-            #         reflection_id=str(reflection_id),
-            #         sarthi_message=fallback_msg,
-            #         current_stage=2,
-            #         next_stage=2,
-            #         data=[{
-            #             "transition": "venting_to_normal_flow",
-            #             "detected_intent": intent,
-            #             "fallback": True
-            #         }]
-            #     )
         else:
             logger.info(f"🏛️ Staying in venting sanctuary - intent is '{intent}' (continuing venting)")
     else:
@@ -196,14 +161,28 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
     if current_stage == 25 and flow_type == "venting":
         user_choice = request.data[0].get("choice") if request.data else None
         logger.info(f"Stage 25 venting stop choice: {user_choice}")
+
+        # Store the choice message with proper labels
+        if request.data and len(request.data) > 0:
+            choice_data = request.data[0].copy()
+            if choice_data.get("choice") == "0":
+                choice_data["label"] = "I want to quit for now"
+            elif choice_data.get("choice") == "1":
+                choice_data["label"] = "I want to continue"
+            
+            db_handler.save_user_choice_message(db, reflection_id, choice_data, current_stage)
         
         if user_choice == "0":  # "I want to quit for now"
             logger.info("User chose to quit - closing venting session")
-            db_handler.update_reflection_status(db, reflection_id, 3)  # Completed but not delivered
+            db_handler.update_reflection_status(db, reflection_id, 3)
+            
+            final_message = "Thank you for sharing with me today. Take care, and feel free to start a new conversation whenever you're ready."
+            db_handler.save_message(db, reflection_id, final_message, sender=1, stage_no=current_stage)
+            
             return MessageResponse(
                 success=True,
                 reflection_id=str(reflection_id),
-                sarthi_message="Thank you for sharing with me today. Take care, and feel free to start a new conversation whenever you're ready.",
+                sarthi_message=final_message,
                 current_stage=None,
                 next_stage=None,
                 data=[{"session_closed": True}]
@@ -220,6 +199,8 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
             except Exception as e:
                 logger.error(f"Failed to get stage 26 prompt: {e}")
                 prompt_text = "How would you like to proceed?"
+
+            db_handler.save_message(db, reflection_id, prompt_text, sender=1, stage_no=26)
             
             return MessageResponse(
                 success=True,
@@ -242,6 +223,8 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
             except Exception as e:
                 logger.error(f"Failed to get stage 25 prompt: {e}")
                 prompt_text = "Would you like to continue or take a break?"
+
+            db_handler.save_message(db, reflection_id, prompt_text, sender=1, stage_no=25)
             
             return MessageResponse(
                 success=True,
@@ -259,6 +242,18 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
     if current_stage == 26:
         user_choice = request.data[0].get("choice") if request.data else None
         logger.info(f"Global intent choice (stage 26): {user_choice}")
+
+         # Store user choice with labels
+        if request.data and len(request.data) > 0:
+            choice_data = request.data[0].copy()
+            if choice_data.get("choice") == "1":
+                choice_data["label"] = "Let's talk about this new feeling"
+            elif choice_data.get("choice") == "2":
+                choice_data["label"] = "Let's try a different approach"
+            elif choice_data.get("choice") == "3":
+                choice_data["label"] = "Can we go back?"
+            
+            db_handler.save_user_choice_message(db, reflection_id, choice_data, current_stage)
         
         if user_choice == "1":  # "Let's talk about this new feeling"
             logger.info("Choice 1: New feeling - going to venting")
@@ -285,6 +280,8 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
             except Exception as e:
                 logger.error(f"Failed to get stage 26 prompt: {e}")
                 prompt_text = "How would you like to proceed?"
+
+            db_handler.save_message(db, reflection_id, prompt_text, sender=1, stage_no=current_stage)
             
             return MessageResponse(
                 success=True, 
@@ -326,10 +323,14 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
         if user_choice == "0":  # "I want to quit for now"
             logger.info("INTENT_STOP_001 choice 0: Quit conversation")
             db_handler.update_reflection_status(db, reflection_id, 3)  # Completed but not delivered
+            # ADD: Store system message
+            quit_message = "Thank you, I hope to talk to you soon!"
+            db_handler.save_message(db, reflection_id, quit_message, sender=1, stage_no=25)
+            
             return MessageResponse(
                 success=True,
                 reflection_id=str(reflection_id),
-                sarthi_message="Thank you, I hope to talk to you soon!",
+                sarthi_message=quit_message,  # Use stored message
                 current_stage=25,
                 next_stage=25
             )
@@ -345,6 +346,8 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
             except Exception as e:
                 logger.error(f"Failed to get stage 26 prompt: {e}")
                 prompt_text = "How would you like to proceed?"
+
+            db_handler.save_message(db, reflection_id, prompt_text, sender=1, stage_no=26)
             
             return MessageResponse(
                 success=True,
@@ -367,6 +370,8 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
             except Exception as e:
                 logger.error(f"Failed to get stage 25 prompt: {e}")
                 prompt_text = "I hear you'd like to pause. Would you like to continue exploring or take a break for now?"
+
+            db_handler.save_message(db, reflection_id, prompt_text, sender=1, stage_no=25)
             
             return MessageResponse(
                 success=True,
@@ -415,7 +420,9 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
             except Exception as e:
                 logger.error(f"Failed to get stage 26 prompt: {e}")
                 prompt_text = "It seems like you want to change direction. How would you like to proceed?"
-            
+
+            db_handler.save_message(db, reflection_id, prompt_text, sender=1, stage_no=26)
+
             return MessageResponse(
                 success=True, 
                 reflection_id=request.reflection_id, 
