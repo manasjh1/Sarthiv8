@@ -13,12 +13,30 @@ async def handle_distress_check(db: Session, request: MessageRequest) -> Message
     level = await distress_service.check(message=request.message)
 
     reflection_id = uuid.UUID(request.reflection_id)
+    reflection = db_handler.get_reflection_by_id(db, reflection_id)
+    current_stage = reflection.current_stage if reflection else 0
     if level == 1:
         db_handler.update_reflection_status(db, reflection_id, 2)
-        db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=-1, is_distress=True)
-        return MessageResponse(success=False, reflection_id=request.reflection_id, sarthi_message="For immediate support, please reach out to a crisis hotline.", data=[{"distress_level": "critical"}])
+        # Store user message
+        db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage, is_distress=True)
+
+        # Store system response at stage -1 as well
+        distress_message = "For immediate support, please reach out to a crisis hotline."
+        db_handler.save_message(db, reflection_id, distress_message, sender=1, stage_no=-1)
+        
+        return MessageResponse(
+            success=False, 
+            reflection_id=request.reflection_id, 
+            sarthi_message=distress_message, 
+            data=[{"distress_level": "critical"}]
+        )
     
     if level == 2:
+
+        # Store user message
+        if request.message:
+            db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage, is_distress=True)
+
         # FIXED: Use the correct method
         prompt_response = await prompt_engine_service.process_dict_request({"stage_id": 22, "data": {}})
         prompt_text = prompt_response.get("prompt", "I understand you're going through a difficult time.")
@@ -30,6 +48,8 @@ async def handle_distress_check(db: Session, request: MessageRequest) -> Message
                 # FIXED: Use the correct method
                 safety_response = await prompt_engine_service.process_dict_request({"stage_id": 23, "data": {}})
                 safety_prompt_text = safety_response.get("prompt", "Your wellbeing is important. Please consider reaching out for support.")
+
+                db_handler.save_message(db, reflection_id, safety_prompt_text, sender=1, stage_no=current_stage)
                 
                 return MessageResponse(success=True, reflection_id=request.reflection_id, sarthi_message=safety_prompt_text)
         except (json.JSONDecodeError, TypeError): 

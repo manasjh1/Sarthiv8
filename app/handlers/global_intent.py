@@ -130,20 +130,22 @@ async def handle_venting_sanctuary(db: Session, request: MessageRequest, chat_id
     
     logger.info(f"🏛️ Entering venting sanctuary for reflection {reflection_id}")
     
-     # Store user text message first (if any)
-    if request.message and request.message.strip():
-        db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage)
-        logger.info(f"✅ Stored venting message: {request.message}")
+    # Save user message first
+    db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage)
     
-    # Store choice data (if any) - though venting usually doesn't have structured choices
-    if request.data and len(request.data) > 0:
-        choice_data = request.data[0]
-        # Only store if it's a meaningful choice (not delivery-related)
-        if not any(key in choice_data for key in ["delivery_mode", "reveal_name", "recipient_email", "recipient_phone"]):
-            db_handler.save_user_choice_message(db, reflection_id, choice_data, current_stage)
-            logger.info(f"✅ Stored venting choice: {choice_data}")
-    
-    
+    # Check for inactivity
+    last_message = db_handler.get_last_user_message(db, reflection_id)
+    is_inactive = False
+    if last_message and last_message.created_at:
+        last_message_time = last_message.created_at
+        if not last_message_time.tzinfo:
+            last_message_time = last_message_time.replace(tzinfo=timezone.utc)
+        elif last_message_time.tzinfo != timezone.utc:
+            last_message_time = last_message_time.astimezone(timezone.utc)
+        
+        time_diff = datetime.now(timezone.utc) - last_message_time
+        is_inactive = time_diff > timedelta(minutes=3)
+
     # Get venting prompt from prompt engine
     try:
         prompt_response = await prompt_engine_service.process_dict_request({"stage_id": current_stage, "data": {}})
@@ -238,15 +240,111 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
     logger.info(f"Global intent check - current_stage: {current_stage}")
     
     # ===== HANDLE VENTING STOP CHOICES (Stage 25) =====
-    #    if current_stage == 25 and flow_type == "venting":
-
-    if current_stage == 25:
-        return await _handle_stage_25(db, request, chat_id)
+    if current_stage == 25 and flow_type == "venting":
+        user_choice = request.data[0].get("choice") if request.data else None
+        logger.info(f"Stage 25 venting stop choice: {user_choice}")
+        
+        if user_choice == "0":  # "I want to quit for now"
+            logger.info("User chose to quit - closing venting session")
+            db_handler.update_reflection_status(db, reflection_id, 3)  # Completed but not delivered
+            return MessageResponse(
+                success=True,
+                reflection_id=str(reflection_id),
+                sarthi_message="Thank you for sharing with me today. Take care, and feel free to start a new conversation whenever you're ready.",
+                current_stage=None,
+                next_stage=None,
+                data=[{"session_closed": True}]
+            )
+            
+        elif user_choice == "1":  # "I want to continue"
+            logger.info("User chose to continue - going to stage 26")
+            db_handler.update_reflection_stage(db, reflection_id, 26)
+            
+            # Get stage 26 prompt and show three options
+            try:
+                prompt_response = await prompt_engine_service.process_dict_request({"stage_id": 26, "data": {}})
+                prompt_text = prompt_response.get("prompt", "How would you like to proceed?")
+            except Exception as e:
+                logger.error(f"Failed to get stage 26 prompt: {e}")
+                prompt_text = "How would you like to proceed?"
+            
+            return MessageResponse(
+                success=True,
+                reflection_id=str(reflection_id),
+                sarthi_message=prompt_text,
+                current_stage=26,
+                next_stage=26,
+                data=[
+                    {"choice": "1", "label": "Let's talk about this new feeling"}, 
+                    {"choice": "2", "label": "Let's try a different approach"}, 
+                    {"choice": "3", "label": "Can we go back?"}
+                ]
+            )
+        
+        else:
+            # No choice provided - show stage 25 options
+            try:
+                prompt_response = await prompt_engine_service.process_dict_request({"stage_id": 25, "data": {}})
+                prompt_text = prompt_response.get("prompt", "Would you like to continue or take a break?")
+            except Exception as e:
+                logger.error(f"Failed to get stage 25 prompt: {e}")
+                prompt_text = "Would you like to continue or take a break?"
+            
+            return MessageResponse(
+                success=True,
+                reflection_id=str(reflection_id),
+                sarthi_message=prompt_text,
+                current_stage=25,
+                next_stage=25,
+                data=[
+                    {"choice": "1", "label": "I want to continue"}, 
+                    {"choice": "0", "label": "I want to quit for now"}
+                ]
+            )
     
     # ===== HANDLE GLOBAL INTENT CHOICES (Stage 26) =====
     if current_stage == 26:
-        return await _handle_stage_26(db, request, chat_id)
-    # If not in stages 25 or 26, proceed to classify global intent
+        user_choice = request.data[0].get("choice") if request.data else None
+        logger.info(f"Global intent choice (stage 26): {user_choice}")
+        
+        if user_choice == "1":  # "Let's talk about this new feeling"
+            logger.info("Choice 1: New feeling - going to venting")
+            db_handler.update_reflection_flow_type(db, reflection_id, "venting")
+            db_handler.update_reflection_stage(db, reflection_id, 24)
+            return await handle_venting_sanctuary(db, request, chat_id)
+            
+        elif user_choice == "2":  # "Let's try a different approach"  
+            logger.info("Choice 2: Different approach - going to stage 1")
+            db_handler.update_reflection_stage(db, reflection_id, 1)
+            return None
+            
+        elif user_choice == "3":  # "Can we go back?"
+            logger.info("Choice 3: Go back to previous stage")
+            previous_stage = db_handler.get_previous_stage(db, reflection_id, steps=2)
+            db_handler.update_reflection_stage(db, reflection_id, previous_stage)
+            return None
+        
+        else:
+            # No choice provided - show stage 26 options
+            try:
+                prompt_response = await prompt_engine_service.process_dict_request({"stage_id": 26, "data": {}})
+                prompt_text = prompt_response.get("prompt", "How would you like to proceed?")
+            except Exception as e:
+                logger.error(f"Failed to get stage 26 prompt: {e}")
+                prompt_text = "How would you like to proceed?"
+            
+            return MessageResponse(
+                success=True, 
+                reflection_id=request.reflection_id, 
+                sarthi_message=prompt_text, 
+                current_stage=26, 
+                next_stage=26, 
+                data=[
+                    {"choice": "1", "label": "Let's talk about this new feeling"}, 
+                    {"choice": "2", "label": "Let's try a different approach"}, 
+                    {"choice": "3", "label": "Can we go back?"}
+                ]
+            )
     
     # ===== RUN GLOBAL INTENT CLASSIFICATION =====
     try:
@@ -269,8 +367,65 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
         # Update to stage 25 (venting stop stage)
         db_handler.update_reflection_stage(db, reflection_id, 25)
         
-        return await _handle_stage_25(db, request, chat_id)
-
+        # Check if user already made a choice
+        user_choice = request.data[0].get("choice") if request.data else None
+        
+        if user_choice == "0":  # "I want to quit for now"
+            logger.info("INTENT_STOP_001 choice 0: Quit conversation")
+            db_handler.update_reflection_status(db, reflection_id, 3)  # Completed but not delivered
+            return MessageResponse(
+                success=True,
+                reflection_id=str(reflection_id),
+                sarthi_message="Thank you, I hope to talk to you soon!",
+                current_stage=25,
+                next_stage=25
+            )
+            
+        elif user_choice == "1":  # "I want to continue"
+            logger.info("INTENT_STOP_001 choice 1: Continue to stage 26")
+            db_handler.update_reflection_stage(db, reflection_id, 26)
+            
+            # Get stage 26 prompt
+            try:
+                prompt_response = await prompt_engine_service.process_dict_request({"stage_id": 26, "data": {}})
+                prompt_text = prompt_response.get("prompt", "How would you like to proceed?")
+            except Exception as e:
+                logger.error(f"Failed to get stage 26 prompt: {e}")
+                prompt_text = "How would you like to proceed?"
+            
+            return MessageResponse(
+                success=True,
+                reflection_id=str(reflection_id),
+                sarthi_message=prompt_text,
+                current_stage=26,
+                next_stage=None,
+                data=[
+                    {"choice": "1", "label": "Let's talk about this new feeling"}, 
+                    {"choice": "2", "label": "Let's try a different approach"}, 
+                    {"choice": "3", "label": "Can we go back?"}
+                ]
+            )
+        
+        else:
+            # No choice provided - show the INTENT_STOP_001 options
+            try:
+                prompt_response = await prompt_engine_service.process_dict_request({"stage_id": 25, "data": {}})
+                prompt_text = prompt_response.get("prompt", "Would you like to continue or take a break?")
+            except Exception as e:
+                logger.error(f"Failed to get stage 25 prompt: {e}")
+                prompt_text = "I hear you'd like to pause. Would you like to continue exploring or take a break for now?"
+            
+            return MessageResponse(
+                success=True,
+                reflection_id=str(reflection_id),
+                sarthi_message=prompt_text,
+                current_stage=25,
+                next_stage=None,
+                data=[
+                    {"choice": "1", "label": "I want to continue"}, 
+                    {"choice": "0", "label": "I want to quit for now"}
+                ]
+            )
     
     # ===== HANDLE RESTART/CONFUSED INTENTS =====
     if global_intent in ["INTENT_RESTART", "INTENT_CONFUSED"]:
@@ -279,7 +434,47 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
         # Update to stage 26 (global intent choice stage)
         db_handler.update_reflection_stage(db, reflection_id, 26)
         
-        return await _handle_stage_26(db, request, chat_id)
+        # Check if user already made a choice
+        user_choice = request.data[0].get("choice") if request.data else None
+        
+        if user_choice == "1":  # "Let's talk about this new feeling"
+            logger.info("Intent choice 1: New feeling - going to venting")
+            db_handler.update_reflection_flow_type(db, reflection_id, "venting")
+            db_handler.update_reflection_stage(db, reflection_id, 24)
+            return await handle_venting_sanctuary(db, request, chat_id)
+            
+        elif user_choice == "2":  # "Let's try a different approach"
+            logger.info("Intent choice 2: Different approach - going to stage 1") 
+            db_handler.update_reflection_stage(db, reflection_id, 1)
+            return None
+            
+        elif user_choice == "3":  # "Can we go back?"
+            logger.info("Intent choice 3: Go back")
+            previous_stage = db_handler.get_previous_stage(db, reflection_id, steps=2)
+            db_handler.update_reflection_stage(db, reflection_id, previous_stage)
+            return None
+        
+        else:
+            # No choice provided - show the global intent options
+            try:
+                prompt_response = await prompt_engine_service.process_dict_request({"stage_id": 26, "data": {}})
+                prompt_text = prompt_response.get("prompt", "How would you like to proceed?")
+            except Exception as e:
+                logger.error(f"Failed to get stage 26 prompt: {e}")
+                prompt_text = "It seems like you want to change direction. How would you like to proceed?"
+            
+            return MessageResponse(
+                success=True, 
+                reflection_id=request.reflection_id, 
+                sarthi_message=prompt_text, 
+                current_stage=26, 
+                next_stage=26, 
+                data=[
+                    {"choice": "1", "label": "Let's talk about this new feeling"}, 
+                    {"choice": "2", "label": "Let's try a different approach"}, 
+                    {"choice": "3", "label": "Can we go back?"}
+                ]
+            )
     
     # ===== HANDLE SKIP TO DRAFT =====
     if global_intent == "INTENT_SKIP_TO_DRAFT":

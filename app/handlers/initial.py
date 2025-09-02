@@ -7,6 +7,7 @@ from app.handlers import database as db_handler
 from app.services import prompt_engine_service, llm_service
 from llm_system.persona import GOLDEN_PERSONA_PROMPT
 from typing import Union, Tuple, Dict
+from app.handlers.database import save_user_choice_message
 import uuid
 import json
 import logging
@@ -233,6 +234,17 @@ async def handle_initial_flow(db: Session, request: MessageRequest, user_id: uui
 
 async def handle_incomplete_reflection(db: Session, request: MessageRequest, reflection, chat_id: uuid.UUID) -> MessageResponse:
     user_choice = request.data[0].get("choice") if request.data else None
+
+    if request.data and len(request.data) > 0:
+        choice_data = request.data[0]
+        if choice_data.get("choice") == "1":
+            choice_data["label"] = "Continue previous conversation"
+        elif choice_data.get("choice") == "0":
+            choice_data["label"] = "Start new conversation"
+        
+        db_handler.save_user_choice_message(db, reflection.reflection_id, choice_data, reflection.current_stage)
+
+
     if user_choice == "1":
         return await process_and_respond(db, reflection.current_stage, reflection.reflection_id, chat_id, request)
     if user_choice == "0":
