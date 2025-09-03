@@ -233,16 +233,21 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
                 print(f"🚨 STAGE5: next_playbook_stage calculated as: {next_playbook_stage}")
                 logger.info(f"Valid name confirmed. Moving to playbook stage {next_playbook_stage}")
                 
+                next_stage_prompt_data = {"stage_id": next_playbook_stage, "data": {}}
+                next_stage_result = await prompt_engine_service.process_dict_request(next_stage_prompt_data)
+                next_stage_prompt = next_stage_result['prompt']
+                print(f"🚨 STAGE5: Got Stage {next_playbook_stage} prompt: {next_stage_prompt[:100]}...")
+                
                 # Manually update to playbook stage
                 db_handler.update_reflection_stage(db, reflection_id, next_playbook_stage)
-                db_handler.save_message(db, reflection_id, sarthi_message, sender=1, stage_no=next_playbook_stage)
+                db_handler.save_message(db, reflection_id, next_stage_prompt, sender=1, stage_no=next_playbook_stage)
                 
                 print(f"🚨 STAGE5: About to return with next_stage: {next_playbook_stage}")
                 
                 return MessageResponse(
                     success=True, 
                     reflection_id=str(reflection_id), 
-                    sarthi_message=sarthi_message, 
+                    sarthi_message=next_stage_prompt,
                     current_stage=5, 
                     next_stage=next_playbook_stage
                 )
