@@ -195,6 +195,8 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
     #     logger.info(f"Processing Stage 4 (INTENTION_INQUIRY) for reflection {reflection_id}")
     #     return await process_and_respond(db, 4, reflection_id, chat_id, request)
 
+    # FIXED Stage 5 Handler in app/handlers/normal_flow.py
+
     if current_stage == 5:  # NAME_VALIDATION
         print(f"🚨 STAGE5: Entering Stage 5 for reflection {reflection_id}")
         logger.info(f"Processing Stage 5 (NAME_VALIDATION) for reflection {reflection_id}")
@@ -233,24 +235,12 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
                 print(f"🚨 STAGE5: next_playbook_stage calculated as: {next_playbook_stage}")
                 logger.info(f"Valid name confirmed. Moving to playbook stage {next_playbook_stage}")
                 
-                next_stage_prompt_data = {"stage_id": next_playbook_stage, "data": {}}
-                next_stage_result = await prompt_engine_service.process_dict_request(next_stage_prompt_data)
-                next_stage_prompt = next_stage_result['prompt']
-                print(f"🚨 STAGE5: Got Stage {next_playbook_stage} prompt: {next_stage_prompt[:100]}...")
-                
-                # Manually update to playbook stage
+                # *** FIX: Update stage and let process_and_respond handle it ***
                 db_handler.update_reflection_stage(db, reflection_id, next_playbook_stage)
-                db_handler.save_message(db, reflection_id, next_stage_prompt, sender=1, stage_no=next_playbook_stage)
                 
-                print(f"🚨 STAGE5: About to return with next_stage: {next_playbook_stage}")
+                # Let process_and_respond handle the playbook stage automatically
+                return await process_and_respond(db, next_playbook_stage, reflection_id, chat_id, request)
                 
-                return MessageResponse(
-                    success=True, 
-                    reflection_id=str(reflection_id), 
-                    sarthi_message=next_stage_prompt,
-                    current_stage=5, 
-                    next_stage=next_playbook_stage
-                )
             else:
                 print(f"🚨 STAGE5: Name is INVALID - staying at Stage 5")
                 # Invalid name - stay at Stage 5

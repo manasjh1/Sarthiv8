@@ -137,7 +137,7 @@ class LLMClient:
     def _extract_user_message(self, raw_response: Dict[str, Any]) -> str:
         """Extract user message from various response formats"""
         
-        message_fields = ["message", "response", "user_message", "reply", "output"]
+        message_fields = ["reflection", "message", "response", "user_message", "reply", "output"]
         
         for field in message_fields:
             if field in raw_response and raw_response[field]:
