@@ -172,10 +172,18 @@ class WhatsAppProvider(MessageProvider):
         return 10 <= len(clean_number) <= 15
     
     def _normalize_phone_number(self, phone: str) -> str:
+        """Normalize phone number for WhatsApp API"""
         clean_number = re.sub(r'\D', '', phone)
-        if not clean_number: return ""
+        
+        if not clean_number:
+            return ""
+        
+        # Handle Indian numbers
         if len(clean_number) == 10:
             clean_number = "91" + clean_number
+        elif len(clean_number) == 12 and clean_number.startswith("91"):
+            pass
+        
         return clean_number
     
     def _extract_otp_from_content(self, content: str) -> str:

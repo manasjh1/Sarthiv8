@@ -131,9 +131,9 @@ async def handle_venting_sanctuary(db: Session, request: MessageRequest, chat_id
     logger.info(f"🏛️ Entering venting sanctuary for reflection {reflection_id}")
     
      # Store user text message first (if any)
-    if request.message and request.message.strip():
-        db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage)
-        logger.info(f"✅ Stored venting message: {request.message}")
+    # if request.message and request.message.strip():
+    #     db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage)
+    #     logger.info(f"✅ Stored venting message: {request.message}")
     
     # Store choice data (if any) - though venting usually doesn't have structured choices
     if request.data and len(request.data) > 0:

@@ -42,10 +42,10 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
         logger.info(f"Processing Stage 1 completion check for reflection {reflection_id}")
         
         # Store user message first
-        if request.message and request.message.strip():
-            print(f"🚨 NORMAL_FLOW: Storing user message: {request.message}")
-            db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage)
-            logger.info(f"✅ Stored user message for Stage 1: {request.message}")
+        # if request.message and request.message.strip():
+        #     print(f"🚨 NORMAL_FLOW: Storing user message: {request.message}")
+        #     db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage)
+        #     logger.info(f"✅ Stored user message for Stage 1: {request.message}")
         
         try:
             # Get prompt from prompt engine
