@@ -177,10 +177,12 @@ async def _base_process_and_respond(db: Session, current_stage: int, reflection_
     if next_stage is not None:
         logger.info(f"Updating reflection current_stage from {current_stage} to {next_stage}")
         db_handler.update_reflection_stage(db, reflection_id, next_stage)
-        
-        # Save Sarthi response with new stage
-        db_handler.save_message(db, reflection_id, final_sarthi_message, sender=1, stage_no=next_stage)
-        logger.info(f"Saved Sarthi message: '{final_sarthi_message}' at stage {next_stage}")
+
+        # Conditionally save Sarthi's response, skipping for stage 17
+        if next_stage != 17:
+            # Save Sarthi response with new stage
+            db_handler.save_message(db, reflection_id, final_sarthi_message, sender=1, stage_no=next_stage)
+            logger.info(f"Saved Sarthi message: '{final_sarthi_message}' at stage {next_stage}")
     else:
         logger.warning(f"next_stage is null for stage {current_stage} - NOT updating reflection.current_stage")
         

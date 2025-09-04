@@ -111,8 +111,10 @@ async def _handle_stage_26(db: Session, request: MessageRequest, chat_id: uuid.U
             prompt_text = "It seems like you want to change direction. How would you like to proceed?"
         db_handler.save_message(db, reflection_id, prompt_text, sender=1, stage_no=26)
         return MessageResponse(
-            success=True, reflection_id=str(reflection_id), sarthi_message=prompt_text,
-            current_stage=26, next_stage=26,
+            success=True, reflection_id=str(reflection_id), 
+            sarthi_message=prompt_text,
+            current_stage=26, 
+            next_stage=26,
             data=[
                 {"choice": "1", "label": "Let's talk about this new feeling"},
                 {"choice": "2", "label": "Let's try a different approach"},
