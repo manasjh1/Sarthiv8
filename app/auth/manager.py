@@ -53,11 +53,10 @@ class AuthManager:
                 if existing_user and existing_user.user_id != current_user.user_id:
                     logging.warning(f"❌ Contact {normalized_contact} already belongs to another user: {existing_user.user_id}")
                     return AuthResult(
-                        success=False, 
-                        message="This contact is already registered with another account. Please use a different email or phone number.",
-                        error_code="CONTACT_ALREADY_REGISTERED"
+                        success=False,
+                        message=f"This contact is already registered with another account. Please use a different {channel}.",
                     )
-                
+
                 # Generate and store OTP for the current user
                 otp = self._generate_otp()
                 
@@ -84,7 +83,7 @@ class AuthManager:
                     return AuthResult(success=False, message="Please wait 60 seconds before requesting a new OTP")
                 result = await self._send_otp_via_channel(channel, normalized_contact, otp, user.name)
                 if not result.success:
-                    return AuthResult(success=False, message=f"Failed to send OTP: {result.error}")
+                    return AuthResult(success=False, message=f"Failed to send OTP to {channel}. Please check your {channel} and try again")
                 return AuthResult(success=True, message="OTP sent successfully.", contact_type=channel)
             else:
                 # New user registration flow
@@ -96,7 +95,7 @@ class AuthManager:
                 invite_data = verify_invite_token(invite_token)
                 invite = db.query(InviteCode).filter(InviteCode.invite_id == invite_data["invite_id"]).first()
                 if not invite or invite.is_used:
-                    return AuthResult(success=False, message="Invite code is invalid or already used.", error_code="INVALID_INVITE")
+                    return AuthResult(success=False, message="Invite code is invalid or already used.")
 
                 logging.info(f"🔍 Sending OTP to new user with valid invite token")
                 otp = self._generate_otp()
@@ -104,7 +103,7 @@ class AuthManager:
                     return AuthResult(success=False, message="Please wait 60 seconds before requesting a new OTP")
                 result = await self._send_otp_via_channel(channel, normalized_contact, otp)
                 if not result.success:
-                    return AuthResult(success=False, message=f"Failed to send OTP: {result.error}")
+                     return AuthResult(success=False, message=f"Failed to send OTP to {channel}. Please check your {channel} and try again.")
                 return AuthResult(success=True, message="OTP sent successfully.", contact_type=channel)
 
         except Exception as e:
