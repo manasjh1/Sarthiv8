@@ -197,3 +197,5 @@ class AuthManager:
         with open(template_path, 'r', encoding='utf-8') as f:
             template_content = f.read()
         return Template(template_content).render(**data)
+
+# Test the feedback email functionality
