@@ -58,7 +58,8 @@ async def outbox(current_user: User = Depends(get_current_user), db: Session = D
         # Get reflections sent by this user
         sent_reflections = db.query(Reflection).join(Chat).filter(
             Reflection.summary.isnot(None),
-            Chat.user_id == current_user.user_id
+            Chat.user_id == current_user.user_id,
+            Reflection.is_delivered.in_([1, 3])  # Delivered or Completed
         ).order_by(Reflection.created_at.desc()).all()
         
         status_map = {0: "In Progress", 1: "Delivered", 2: "Blocked", 3: "Completed"}
