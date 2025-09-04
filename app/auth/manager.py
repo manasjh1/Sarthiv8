@@ -47,6 +47,18 @@ class AuthManager:
             # --- NEW LOGIC: Handle profile updates for a logged-in user ---
             if current_user:
                 logging.info(f"✅ Profile Update OTP Flow for user: {current_user.user_id}")
+
+                # Check if the contact already belongs to another user
+                existing_user = self.utils.find_user_by_contact(normalized_contact, db)
+                if existing_user and existing_user.user_id != current_user.user_id:
+                    logging.warning(f"❌ Contact {normalized_contact} already belongs to another user: {existing_user.user_id}")
+                    return AuthResult(
+                        success=False, 
+                        message="This contact is already registered with another account. Please use a different email or phone number.",
+                        error_code="CONTACT_ALREADY_REGISTERED"
+                    )
+                
+                # Generate and store OTP for the current user
                 otp = self._generate_otp()
                 
                 # Store OTP against the currently logged-in user's ID
@@ -58,7 +70,7 @@ class AuthManager:
                 if not result.success:
                     return AuthResult(success=False, message=f"Failed to send OTP: {result.error}")
                 
-                return AuthResult(success=True, message="OTP sent successfully.", contact_type=channel)
+                return AuthResult(success=True, message="OTP sent successfully for profile update.", contact_type=channel)
             # --- END NEW LOGIC ---
 
             # --- Existing logic for LOGIN or NEW USER REGISTRATION ---

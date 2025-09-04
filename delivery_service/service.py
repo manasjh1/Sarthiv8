@@ -246,7 +246,7 @@ class DeliveryService:
         db.commit()
         return {
             "success": True, "reflection_id": str(reflection.reflection_id),
-            "sarthi_message": "Your message is saved privately. 🔒 How are you feeling?",
+            "sarthi_message": "Your message is saved privately.  How are you feeling?",
             "current_stage": 100, "next_stage": 100,
             "data": [{"summary": self._get_reflection_summary(reflection), "status": ["private"], "delivery_complete": True, "feedback_required": True}]
         }
@@ -262,11 +262,11 @@ class DeliveryService:
         )
         if not result.success:
             raise Exception(f"Email sending failed: {result.message}")
-        self.logger.info(f"✅ Email sent to: {recipient_email}")
+        self.logger.info(f" Email sent to: {recipient_email}")
 
     async def _deliver_via_whatsapp(self, sender_user, summary, reflection, recipient_phone, delivery_status, db):
         await self._create_or_update_recipient_user(contact=recipient_phone, reflection=reflection, db=db)
-        reflection_link = f"https://app.sarthi.me/reflection/{reflection.reflection_id}"
+        reflection_link = f"https://app.sarthi.me/reflection/{reflection.reflection_id}?type=inbox"
         sender_name = self._get_sender_name(reflection, sender_user)
         result = await self.whatsapp_provider.send_reflection_summary(
             recipient=recipient_phone,
@@ -275,7 +275,7 @@ class DeliveryService:
         )
         if not result.success:
             raise Exception(f"WhatsApp delivery failed: {result.error}")
-        self.logger.info(f"✅ WhatsApp sent to: {recipient_phone}")
+        self.logger.info(f" WhatsApp sent to: {recipient_phone}")
 
     async def _create_or_update_recipient_user(self, contact, reflection, db) -> User:
         contact_type = self.auth_manager.utils.detect_channel(contact)
@@ -298,7 +298,7 @@ class DeliveryService:
             db.add(new_chat)
             db.commit()
             
-            self.logger.info(f"✅ Created new recipient user: {new_user.user_id} and chat: {new_chat.chat_id}")
+            self.logger.info(f" Created new recipient user: {new_user.user_id} and chat: {new_chat.chat_id}")
             reflection.receiver_user_id = new_user.user_id
             db.commit()
             return new_user
@@ -307,7 +307,7 @@ class DeliveryService:
                 new_chat = Chat(user_id=existing_user.user_id)
                 db.add(new_chat)
                 db.commit()
-                self.logger.info(f"✅ Created chat for existing recipient user: {existing_user.user_id}")
+                self.logger.info(f" Created chat for existing recipient user: {existing_user.user_id}")
             
             reflection.receiver_user_id = existing_user.user_id
             db.commit()

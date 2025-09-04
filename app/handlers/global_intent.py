@@ -127,13 +127,13 @@ async def handle_venting_sanctuary(db: Session, request: MessageRequest, chat_id
     """
     reflection_id = uuid.UUID(request.reflection_id)
     current_stage = 24
-    
-    logger.info(f"🏛️ Entering venting sanctuary for reflection {reflection_id}")
-    
-     # Store user text message first (if any)
+
+    logger.info(f" Entering venting sanctuary for reflection {reflection_id}")
+
+    # Store user text message first (if any)
     # if request.message and request.message.strip():
     #     db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage)
-    #     logger.info(f"✅ Stored venting message: {request.message}")
+    #     logger.info(f" Stored venting message: {request.message}")
     
     # Store choice data (if any) - though venting usually doesn't have structured choices
     if request.data and len(request.data) > 0:
@@ -141,14 +141,14 @@ async def handle_venting_sanctuary(db: Session, request: MessageRequest, chat_id
         # Only store if it's a meaningful choice (not delivery-related)
         if not any(key in choice_data for key in ["delivery_mode", "reveal_name", "recipient_email", "recipient_phone"]):
             db_handler.save_user_choice_message(db, reflection_id, choice_data, current_stage)
-            logger.info(f"✅ Stored venting choice: {choice_data}")
+            logger.info(f" Stored venting choice: {choice_data}")
     
     
     # Get venting prompt from prompt engine
     try:
         prompt_response = await prompt_engine_service.process_dict_request({"stage_id": current_stage, "data": {}})
         prompt_text = prompt_response.get("prompt", "I'm listening.")
-        logger.info(f"📝 Retrieved venting prompt for stage {current_stage}")
+        logger.info(f" Retrieved venting prompt for stage {current_stage}")
     except Exception as e:
         logger.error(f"Failed to get venting prompt: {e}")
         prompt_text = "I'm here to listen. Please share what's on your mind."
@@ -170,51 +170,51 @@ async def handle_venting_sanctuary(db: Session, request: MessageRequest, chat_id
         
         sarthi_response_msg = user_response.get("message", "I'm listening.")
         
-        logger.info(f"💭 LLM Response received - User: '{sarthi_response_msg[:50]}...', System: {system_response}")
+        logger.info(f" LLM Response received - User: '{sarthi_response_msg[:50]}...', System: {system_response}")
         
     except Exception as e:
         logger.error(f"Venting LLM error: {e}")
         sarthi_response_msg = "I'm listening. Please continue."
         system_response = {}
 
-    # 🔄 NEW LOGIC: Process system_response and check for intent transition
+    #  NEW LOGIC: Process system_response and check for intent transition
     if system_response:
-        logger.info(f"🔍 Processing system_response: {system_response}")
+        logger.info(f" Processing system_response: {system_response}")
         
         # Update database with system_response data
         await update_database_with_system_message(db, system_response, reflection_id)
-        logger.info(f"✅ Database updated with system_response")
+        logger.info(f" Database updated with system_response")
         
         # Check if intent is not 'venting' and not null/empty
         intent = system_response.get("intent")
-        logger.info(f"🎯 Detected intent: {intent}")
+        logger.info(f" Detected intent: {intent}")
         
         if (intent is not None and 
             isinstance(intent, str) and 
             intent.strip() and 
             intent.strip().lower() != "venting"):
-            logger.info(f"🚀 Intent transition detected! Moving from venting to normal flow")
+            logger.info(f" Intent transition detected! Moving from venting to normal flow")
             logger.info(f"   - Intent: {intent}")
             logger.info(f"   - Will redirect to stage 2 (AWAITING_EMOTION)")
             
             # Update reflection stage to 2 (AWAITING_EMOTION)
             db_handler.update_reflection_stage(db, reflection_id, 2)
-            logger.info(f"✅ Updated reflection stage from {current_stage} to 2")
+            logger.info(f" Updated reflection stage from {current_stage} to 2")
 
             # OPTIMIZED: Directly call normal flow instead of manual prompt handling
             from app.handlers import normal_flow
             return await normal_flow.handle_normal_flow(db, request, chat_id)
             
         else:
-            logger.info(f"🏛️ Staying in venting sanctuary - intent is '{intent}' (continuing venting)")
+            logger.info(f" Staying in venting sanctuary - intent is '{intent}' (continuing venting)")
     else:
-        logger.info(f"📭 No system_response received - continuing normal venting flow")
+        logger.info(f" No system_response received - continuing normal venting flow")
 
-    # 🏛️ NORMAL VENTING FLOW: Continue if no intent transition
+    #  NORMAL VENTING FLOW: Continue if no intent transition
     # Save normal Sarthi response for continued venting
     db_handler.save_message(db, reflection_id, sarthi_response_msg, sender=1, stage_no=current_stage)
     
-    logger.info(f"🏛️ Continuing venting sanctuary - user actively sharing")
+    logger.info(f" Continuing venting sanctuary - user actively sharing")
     return MessageResponse(
         success=True, 
         reflection_id=str(reflection_id), 
