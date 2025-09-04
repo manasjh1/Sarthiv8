@@ -83,10 +83,10 @@ async def request_contact_otp(
     
     if not result.success:
         # Handle specific error codes with better messages
-        if result.error_code == "CONTACT_ALREADY_REGISTERED":
-            raise HTTPException(status_code=400, detail="This contact is already registered with another account.")
-        else:
-            raise HTTPException(status_code=400, detail=result.message)
+        return UpdateProfileResponse(
+            success=result.success, 
+            message=result.message  # ✅ Frontend gets "message"
+        )
         
     return UpdateProfileResponse(success=True, message=f"OTP sent successfully to {contact}")
 
