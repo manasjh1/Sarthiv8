@@ -79,4 +79,22 @@ block_list = [
     "end my life",
     "take my life",
     "want to die"
+    "kill you"
+    # Self-harm phrases
+    "kill myself",
+    "end my life", 
+    "take my life",
+    "want to die",
+    "suicide",
+    "suicidal",
+    "kms",
+    
+    # Threat phrases  
+    "kill you",
+    "hurt you", 
+    "harm you",
+    "will kill",
+    "going to kill",
+    "want to kill someone",
+    "kill people"
 ]
