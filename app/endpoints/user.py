@@ -78,15 +78,15 @@ async def request_contact_otp(
     """
     contact = request.contact.strip()
     
-    existing_user = auth_manager.utils.find_user_by_contact(contact, db)
-    if existing_user and existing_user.user_id != current_user.user_id:
-        raise HTTPException(status_code=400, detail="This contact is already linked to another account.")
-        
-    # --- MODIFIED CALL: Pass the current_user to trigger profile update logic ---
+    # Pass the current_user to trigger profile update logic
     result = await auth_manager.send_otp(contact=contact, db=db, current_user=current_user)
     
     if not result.success:
-        raise HTTPException(status_code=400, detail=result.message)
+        # Handle specific error codes with better messages
+        if result.error_code == "CONTACT_ALREADY_REGISTERED":
+            raise HTTPException(status_code=400, detail="This contact is already registered with another account.")
+        else:
+            raise HTTPException(status_code=400, detail=result.message)
         
     return UpdateProfileResponse(success=True, message=f"OTP sent successfully to {contact}")
 
