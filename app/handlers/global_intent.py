@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from app.schemas import MessageRequest, MessageResponse
 from app.services import global_intent_classifier, prompt_engine_service, llm_service
 from app.handlers import database as db_handler
-from app.handlers.initial import update_database_with_system_message
+from app.handlers.initial import update_database_with_system_message, process_and_respond
+from app.handlers import normal_flow
 from llm_system.persona import GOLDEN_PERSONA_PROMPT
 import uuid
 
@@ -94,12 +95,12 @@ async def _handle_stage_26(db: Session, request: MessageRequest, chat_id: uuid.U
     elif user_choice == "2":
         logger.info("Choice 2: Different approach - restarting flow at stage 1")
         db_handler.update_reflection_stage(db, reflection_id, 1)
-        return None
+        return await process_and_respond(db, 1, reflection_id, chat_id, request)
     elif user_choice == "3":
         logger.info("Choice 3: Go back to the previous stage")
         previous_stage = db_handler.get_previous_stage(db, reflection_id, steps=2)
         db_handler.update_reflection_stage(db, reflection_id, previous_stage)
-        return None
+        return await process_and_respond(db, previous_stage, reflection_id, chat_id, request)
     else:
         # If no choice is made, present the options
         logger.info("No choice provided for Stage 26. Presenting options.")
@@ -204,7 +205,6 @@ async def handle_venting_sanctuary(db: Session, request: MessageRequest, chat_id
             logger.info(f" Updated reflection stage from {current_stage} to 2")
 
             # OPTIMIZED: Directly call normal flow instead of manual prompt handling
-            from app.handlers import normal_flow
             return await normal_flow.handle_normal_flow(db, request, chat_id)
             
         else:
@@ -287,7 +287,7 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
     if global_intent == "INTENT_SKIP_TO_DRAFT":
         logger.info("Skip to draft intent - going to stage 16")
         db_handler.update_reflection_stage(db, reflection_id, 16)
-        return None  # Let normal flow handle stage 16
+        return await normal_flow.handle_normal_flow(db, request, chat_id)  # Let normal flow handle stage 16
         
     # No global intent detected - let normal flow continue
     return None
