@@ -35,19 +35,23 @@ class MessageOrchestrator:
             # ADD THIS DEBUG - Check the reflection's current stage:
             reflection = db_handler.get_reflection_by_id(self.db, uuid.UUID(request.reflection_id))
             if reflection:
-                self.logger.info(f" ORCHESTRATOR: Found reflection with current_stage: {reflection.current_stage}, flow_type: {reflection.flow_type}")
+                current_stage = reflection.current_stage
+                flow_type = reflection.flow_type
+                self.logger.info(f" ORCHESTRATOR: Found reflection with current_stage: {current_stage}, flow_type: {flow_type}")
             else:
                 self.logger.info(f" ORCHESTRATOR: No reflection found!")
+                return MessageResponse(success=False, sarthi_message="Reflection not found.")
             
             self.logger.info(f" ORCHESTRATOR: Checking distress...")
             if (distress_response := await distress.handle_distress_check(self.db, request)): 
                 self.logger.info(f" ORCHESTRATOR: Distress detected - returning distress response")
                 return distress_response
-                
-            self.logger.info(f" ORCHESTRATOR: Checking global intent...")
-            if (intent_response := await global_intent.handle_global_intent_check(self.db, request, chat_id)): 
-                self.logger.info(f" ORCHESTRATOR: Global intent detected - returning intent response")
-                return intent_response
+            
+            if current_stage != 27:
+                self.logger.info(f" ORCHESTRATOR: Checking global intent...")
+                if (intent_response := await global_intent.handle_global_intent_check(self.db, request, chat_id)): 
+                    self.logger.info(f" ORCHESTRATOR: Global intent detected - returning intent response")
+                    return intent_response
             
             # Triage for Venting Flow
             if reflection and reflection.flow_type == 'venting':

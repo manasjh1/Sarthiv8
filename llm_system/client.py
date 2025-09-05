@@ -110,6 +110,12 @@ class LLMClient:
     def _extract_system_data(self, raw_response: Dict[str, Any]) -> Dict[str, Any]:
         """Extract system data from various response formats"""
         system_data = {}
+
+        if "decision" in raw_response:
+            system_data["decision"] = raw_response["decision"]
+        
+        if "send_to_user" in raw_response:
+            system_data["send_to_user"] = raw_response["send_to_user"]
         
         for key in ["recipient_name", "relationship", "emotions", "intent"]:
             if key in raw_response:
@@ -118,14 +124,25 @@ class LLMClient:
         # Handle both isValidName and isValid formats
         if "isValidName" in raw_response:
             system_data["is_valid_name"] = "yes" if raw_response["isValidName"] else "no"
+            
+            if "name" in raw_response:
+                system_data["name"] = raw_response["name"]
+            if "names" in raw_response:
+                system_data["names"] = raw_response["names"]
         elif "isValid" in raw_response:
             system_data["is_valid_name"] = "yes" if raw_response["isValid"] else "no"
+            
+            if "name" in raw_response:
+                system_data["name"] = raw_response["name"]
+            if "names" in raw_response:
+                system_data["names"] = raw_response["names"]    
         elif "is_valid_name" in raw_response:
             system_data["is_valid_name"] = raw_response["is_valid_name"]
 
         system_fields = [
             "intent", "confidence", "analysis", "validation", "classification",
-            "extracted_data", "metadata", "assessment", "recommendation"
+            "extracted_data", "metadata", "assessment", "recommendation", "proceed",
+            "choice", "confirmation", "user_wants_delivery", "decision", "send_to_user"
         ]
 
         for field in system_fields:

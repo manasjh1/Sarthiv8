@@ -1,5 +1,3 @@
-# COMPLETE UPDATED global_intent.py - Replace entire file
-
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -275,7 +273,7 @@ async def handle_global_intent_check(db: Session, request: MessageRequest, chat_
 
     
     # ===== HANDLE RESTART/CONFUSED INTENTS =====
-    if global_intent in ["INTENT_RESTART", "INTENT_CONFUSED"]:
+    if global_intent in ["INTENT_RESTART", "INTENT_CONFUSED","INTENT_STOP_001"]:
         logger.info(f"Detected {global_intent} - moving to stage 26")
         
         # Update to stage 26 (global intent choice stage)
