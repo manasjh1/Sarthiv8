@@ -28,9 +28,8 @@ async def find_data(stage_no: int, db: Session, reflection_id: uuid.UUID, chat_i
         context = "\n".join([f"{'User' if msg.sender == 0 else 'Sarthi'}: {msg.message}" for msg in messages])
         return {"full_conversation_context": context}
     elif stage_no in [18, 19]:
+        print(f"DEBUG find_data: reflection.receiver_name = '{reflection.receiver_name}'")
         return {"recipient_name": reflection.receiver_name or "them"}
-    elif stage_no == 24:
-        return {"emotions": reflection.emotion or "this feeling"}
     return {}
 
 async def update_database_with_system_message(db: Session, system_response: dict, reflection_id: uuid.UUID):
