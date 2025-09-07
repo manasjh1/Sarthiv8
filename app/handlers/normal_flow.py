@@ -204,28 +204,22 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
 
 
             
-            is_valid = system_msg.get("validNames") == "yes"
+            is_valid_name = system_msg.get("is_valid_name")  # Could be "yes"/"no"
+            extracted_name = system_msg.get("name") or system_msg.get("extracted_name") or system_msg.get("recipient_name")
             
-            if "names" in system_msg and system_msg["names"]:
-                validated_name = system_msg["names"][0]
-                print(f"STAGE5: Found MULTIPLE names: {system_msg['names']}, using: {validated_name}")
-            elif "name" in system_msg and system_msg["name"]:
-                validated_name = system_msg["name"]
-                print(f"STAGE5: Found SINGLE name: {validated_name}")
-            else:
-                validated_name = request.message
-                print(f"STAGE5: NO name found, using fallback: {validated_name}")
+            print(f" STAGE5: is_valid_name: {is_valid_name}")
+            print(f" STAGE5: extracted_name: {extracted_name}")
                 
-            print(f"STAGE5: Preliminary is_valid: {is_valid}, validated_name: {validated_name}")
             
-            if validated_name:
-                db_handler.update_reflection_recipient(db, reflection_id, validated_name)
-                print(f"STAGE5: Updated recipient name in DB: {validated_name}")
-                
-                updated_reflection = db_handler.get_reflection_by_id(db, reflection_id)
-                print(f"STAGE5: AFTER update - receiver_name: {updated_reflection.receiver_name}")
+            if is_valid_name == "yes" and extracted_name:
+                db_handler.update_reflection_recipient(db, reflection_id, extracted_name)
+                print(f"STAGE5: Updated recipient name in DB: {extracted_name}")
+
+                # updated_reflection = db_handler.get_reflection_by_id(db, reflection_id)
+                # print(f"STAGE5: AFTER update - receiver_name: {updated_reflection.receiver_name}")
                 
             current_reflection = db_handler.get_reflection_by_id(db, reflection_id)
+            print(f"STAGE5: AFTER update - receiver_name: {current_reflection.receiver_name}")
             next_playbook_stage = _get_first_playbook_stage(current_reflection.flow_type)
             print(f"STAGE5: next_playbook_stage calculated as: {next_playbook_stage}")
             logger.info(f"Moving to playbook stage {next_playbook_stage}")
@@ -295,6 +289,9 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
                     if deliver_choice == 0:  # User chose "No, don't deliver"
                         print(f" STAGE19: User chose not to deliver - moving to stage 20")
                         db_handler.update_reflection_stage(db, reflection_id, 20)
+                        reflection = db_handler.get_reflection_by_id(db, reflection_id)
+                        reflection.is_delivered = 3 # Mark as completed without delivery
+                        db.commit()
                         return await process_and_respond(db, 20, reflection_id, chat_id, request)
                     
                     elif deliver_choice == 1:  # User chose "Yes, deliver" - start delivery flow

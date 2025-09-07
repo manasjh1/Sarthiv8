@@ -142,7 +142,8 @@ class LLMClient:
         system_fields = [
             "intent", "confidence", "analysis", "validation", "classification",
             "extracted_data", "metadata", "assessment", "recommendation", "proceed",
-            "choice", "confirmation", "user_wants_delivery", "decision", "send_to_user"
+            "choice", "confirmation", "user_wants_delivery", "decision", "send_to_user",
+            "name", "extracted_name", "recipient_name", "relationship", "emotions", "names"
         ]
 
         for field in system_fields:
