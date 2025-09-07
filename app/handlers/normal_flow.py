@@ -24,7 +24,7 @@ def _get_first_playbook_stage(flow_type: str) -> int:
         return 13
     if flow_type == 'gratitude': # Add this line
         return 13
-    return 6  # Default to feedback playbook starting stage (not 2)
+    # return 6  # Default to feedback playbook starting stage (not 2)
 
 async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid.UUID) -> MessageResponse:
     reflection_id = uuid.UUID(request.reflection_id)
