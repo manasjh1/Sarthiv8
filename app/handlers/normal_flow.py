@@ -272,263 +272,171 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
         logger.info(f"Processing Stage 18 (AWAITING_DELIVERY_TONE) for reflection {reflection_id}")
         return await process_and_respond(db, 18, reflection_id, chat_id, request)
 
+
     if current_stage == 19:  # AWAITING_PREAMBLE_DECISION
         logger.info(f"Processing Stage 19 (AWAITING_PREAMBLE_DECISION) for reflection {reflection_id}")
-        print(f"STAGE19: Entering delivery flow for reflection {reflection_id}")
-        print(f"STAGE19: Request data: {request.data}")
-        print(f"STAGE19: Request message: '{request.message}'")
-        return await process_and_respond(db, 19, reflection_id, chat_id, request)
+        print(f" STAGE19: Entering delivery flow for reflection {reflection_id}")
+        print(f" STAGE19: Request data: {request.data}")
+        print(f" STAGE19: Request message: '{request.message}'")
 
-    if current_stage == 27:  # CONFIRMATION STAGE
-        logger.info(f"Processing Stage 27 (CONFIRMATION) for reflection {reflection_id}")
-        
-        # FIRST: Handle user choices (when request.data exists)
-        if request.data and len(request.data) > 0:
-            user_choice = request.data[0]
-            print(f" STAGE27: Processing user choice without LLM: {user_choice}")
-            
-            try:
-                # Handle identity reveal choice
-                if "reveal_name" in user_choice:
-                    reveal_choice = user_choice.get("reveal_name")
-                    provided_name = user_choice.get("name")
-                    print(f" STAGE27: Identity choice - reveal: {reveal_choice}, name: {provided_name}")
-                    result = await delivery_service.process_identity_choice(
-                        reflection_id=reflection_id,
-                        reveal_choice=reveal_choice,
-                        provided_name=provided_name,
-                        db=db
-                    )
+        try:
+            # Check if user provided input
+            if request.data and len(request.data) > 0:
+                user_choice = request.data[0]
+                print(f" STAGE19: Processing user choice: {user_choice}")
                 
-                # Handle name input (when user chose reveal but didn't provide name initially)
-                elif "name" in user_choice:
-                    print(f" STAGE27: Name input: {user_choice.get('name')}")
-                    result = await delivery_service.process_identity_choice(
-                        reflection_id=reflection_id,
-                        reveal_choice=True,
-                        provided_name=user_choice.get("name"),
-                        db=db
-                    )
-                
-                # Handle delivery mode choice
-                elif "delivery_mode" in user_choice:
-                    delivery_mode = user_choice.get("delivery_mode")
-                    print(f" STAGE27: Delivery mode choice: {delivery_mode}")
+                # Handle initial delivery confirmation choice (deliver: 0 or 1)
+                if "deliver" in user_choice:
+                    deliver_choice = user_choice.get("deliver")
+                    print(f" STAGE19: Delivery choice: {deliver_choice}")
                     
-                    # Validate required contact info
-                    if delivery_mode in [0, 2] and not user_choice.get("recipient_email"):
-                        return MessageResponse(
-                            success=False,
-                            reflection_id=str(reflection_id),
-                            sarthi_message="Email address is required for email delivery.",
-                            current_stage=27,
-                            next_stage=27
+                    # DON'T store this choice in database as requested
+                    
+                    if deliver_choice == 0:  # User chose "No, don't deliver"
+                        print(f" STAGE19: User chose not to deliver - moving to stage 20")
+                        db_handler.update_reflection_stage(db, reflection_id, 20)
+                        return await process_and_respond(db, 20, reflection_id, chat_id, request)
+                    
+                    elif deliver_choice == 1:  # User chose "Yes, deliver" - start delivery flow
+                        print(f" STAGE19: User chose to deliver - starting delivery flow")
+                        result = await delivery_service.send_reflection(
+                            reflection_id=reflection_id,
+                            db=db
                         )
-                    
-                    if delivery_mode in [1, 2] and not user_choice.get("recipient_phone"):
+                        print(f" STAGE19: Initial delivery service result: {result}")
+                        
                         return MessageResponse(
-                            success=False,
-                            reflection_id=str(reflection_id),
-                            sarthi_message="Phone number is required for WhatsApp delivery.",
-                            current_stage=27,
-                            next_stage=27
+                            success=result.get("success", True),
+                            reflection_id=result["reflection_id"],
+                            sarthi_message=result["sarthi_message"],
+                            current_stage=result.get("current_stage", 19),
+                            next_stage=result.get("next_stage", 19),
+                            data=result.get("data", [])
                         )
-                    
-                    recipient_contact = {
-                        "recipient_email": user_choice.get("recipient_email"),
-                        "recipient_phone": user_choice.get("recipient_phone")
-                    }
-                    result = await delivery_service.process_delivery_choice(
-                        reflection_id=reflection_id,
-                        delivery_mode=delivery_mode,
-                        recipient_contact=recipient_contact,
-                        db=db
-                    )
                 
-                # Handle third-party email
-                elif "email" in user_choice:
-                    print(f" STAGE27: Third-party email: {user_choice.get('email')}")
-                    result = await delivery_service.process_third_party_email(
-                        reflection_id=reflection_id,
-                        third_party_email=user_choice.get("email"),
-                        db=db
-                    )
-                
+                # Handle all other delivery service choices (identity, delivery mode, etc.)
                 else:
-                    # Unrecognized choice format
-                    print(f" STAGE27: Unrecognized choice format: {user_choice}")
-                    return MessageResponse(
-                        success=False,
-                        reflection_id=str(reflection_id),
-                        sarthi_message="Invalid choice format.",
-                        current_stage=27,
-                        next_stage=27
-                    )
+                    print(f" STAGE19: Processing delivery service choice: {user_choice}")
+                    
+                    # Handle identity reveal choice
+                    if "reveal_name" in user_choice:
+                        reveal_choice = user_choice.get("reveal_name")
+                        provided_name = user_choice.get("name")
+                        print(f" STAGE19: Identity choice - reveal: {reveal_choice}, name: {provided_name}")
+                        result = await delivery_service.process_identity_choice(
+                            reflection_id=reflection_id,
+                            reveal_choice=reveal_choice,
+                            provided_name=provided_name,
+                            db=db
+                        )
+                    
+                    # Handle name input (when user chose reveal but didn't provide name initially)
+                    elif "name" in user_choice:
+                        print(f" STAGE19: Name input: {user_choice.get('name')}")
+                        result = await delivery_service.process_identity_choice(
+                            reflection_id=reflection_id,
+                            reveal_choice=True,
+                            provided_name=user_choice.get("name"),
+                            db=db
+                        )
+                    
+                    # Handle delivery mode choice
+                    elif "delivery_mode" in user_choice:
+                        delivery_mode = user_choice.get("delivery_mode")
+                        print(f" STAGE19: Delivery mode choice: {delivery_mode}")
+                        
+                        # Validate required contact info
+                        if delivery_mode in [0, 2] and not user_choice.get("recipient_email"):
+                            return MessageResponse(
+                                success=False,
+                                reflection_id=str(reflection_id),
+                                sarthi_message="Email address is required for email delivery.",
+                                current_stage=19,
+                                next_stage=19
+                            )
+                        
+                        if delivery_mode in [1, 2] and not user_choice.get("recipient_phone"):
+                            return MessageResponse(
+                                success=False,
+                                reflection_id=str(reflection_id),
+                                sarthi_message="Phone number is required for WhatsApp delivery.",
+                                current_stage=19,
+                                next_stage=19
+                            )
+                        
+                        recipient_contact = {
+                            "recipient_email": user_choice.get("recipient_email"),
+                            "recipient_phone": user_choice.get("recipient_phone")
+                        }
+                        result = await delivery_service.process_delivery_choice(
+                            reflection_id=reflection_id,
+                            delivery_mode=delivery_mode,
+                            recipient_contact=recipient_contact,
+                            db=db
+                        )
+                    
+                    # Handle third-party email
+                    elif "email" in user_choice:
+                        print(f" STAGE19: Third-party email: {user_choice.get('email')}")
+                        result = await delivery_service.process_third_party_email(
+                            reflection_id=reflection_id,
+                            third_party_email=user_choice.get("email"),
+                            db=db
+                        )
+                    
+                    else:
+                        # No recognized choice, show initial options
+                        print(f" STAGE19: Unrecognized choice, showing initial options")
+                        result = await delivery_service.send_reflection(
+                            reflection_id=reflection_id,
+                            db=db
+                        )
                 
-                print(f" STAGE27: Choice handling result: {result}")
+                print(f" STAGE19: Delivery service result: {result}")
                 
                 return MessageResponse(
                     success=result.get("success", True),
                     reflection_id=result["reflection_id"],
                     sarthi_message=result["sarthi_message"],
-                    current_stage=result.get("current_stage", 27),
-                    next_stage=result.get("next_stage", 27),
+                    current_stage=result.get("current_stage", 19),
+                    next_stage=result.get("next_stage", 19),
                     data=result.get("data", [])
                 )
                 
-            except Exception as e:
-                logger.error(f"Choice handling failed: {str(e)}", exc_info=True)
-                print(f" STAGE27: Choice handling ERROR - {str(e)}")
-                return MessageResponse(
-                    success=False,
-                    reflection_id=str(reflection_id),
-                    sarthi_message="Failed to process your choice. Please try again.",
-                    current_stage=27,
-                    next_stage=27
-                )
-        
-        # SECOND: Handle text message with LLM (when request.message exists but no data)
-        elif request.message and request.message.strip():
-            try:
-                prompt_request_data = {"stage_id": current_stage, "data": {}}
+            else:
+                # No user input, show initial delivery prompt with yes/no choices
+                print(f" STAGE19: No user input, showing initial delivery prompt with yes/no choices")
+                
+                # Get prompt from prompt engine
+                prompt_request_data = {"stage_id": 19, "data": {}}
                 prompt_result = await prompt_engine_service.process_dict_request(prompt_request_data)
+                sarthi_message = prompt_result.get('prompt', "Do you want to deliver this message?")
                 
-                llm_request = {
-                    "prompt": prompt_result['prompt'],
-                    "user_message": request.message,
-                    "reflection_id": str(reflection_id)
-                }
+                # Save the prompt message
+                db_handler.save_message(db, reflection_id, sarthi_message, sender=1, stage_no=19)
                 
-                llm_response_str = await llm_service.process_json_request(json.dumps(llm_request))
-                llm_response = json.loads(llm_response_str)
+                return MessageResponse(
+                    success=True,
+                    reflection_id=str(reflection_id),
+                    sarthi_message=sarthi_message,
+                    current_stage=19,
+                    next_stage=19,
+                    data=[
+                        {"deliver": 1, "label": "Yes, deliver this message"},
+                        {"deliver": 0, "label": "No, don't deliver"}
+                    ]
+                )
                 
-                system_response = llm_response.get("system_response", {})
-                user_response = llm_response.get("user_response", {})
-                
-                logger.info(f"Stage 27 LLM system_response: {system_response}")
-                logger.info(f"Stage 27 LLM user_response: {user_response}")
-                
-                db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage)
-                
-                decision = None
-
-                # Handle case where system_response is just a string "yes" or "no"
-                if isinstance(system_response, str):
-                    response_str = system_response.lower().strip()
-                    if response_str in ["yes", "y", "true", "1"]:
-                        decision = "yes"
-                    elif response_str in ["no", "n", "false", "0"]:
-                        decision = "no"
-
-                # Handle case where system_response is a dictionary
-                elif isinstance(system_response, dict):
-                    # Check for specific decision fields first
-                    if "decision" in system_response:
-                        decision_value = str(system_response["decision"]).lower().strip()
-                        if decision_value in ["yes", "y", "true", "1"]:
-                            decision = "yes"
-                        elif decision_value in ["no", "n", "false", "0"]:
-                            decision = "no"
-                    
-                    elif "choice" in system_response:
-                        choice_value = str(system_response["choice"]).lower().strip()
-                        if choice_value in ["yes", "y", "true", "1"]:
-                            decision = "yes"
-                        elif choice_value in ["no", "n", "false", "0"]:
-                            decision = "no"
-                    
-                    elif "proceed" in system_response:
-                        proceed_value = system_response["proceed"]
-                        if isinstance(proceed_value, bool):
-                            decision = "yes" if proceed_value else "no"
-                        else:
-                            proceed_str = str(proceed_value).lower().strip()
-                            decision = "yes" if proceed_str in ["yes", "true", "1"] else "no"
-
-                logger.info(f"Final extracted decision: {decision}")
-                
-                if decision == "yes":
-                    logger.info("LLM detected YES - showing identity reveal options")
-                    
-                    # Just show the identity reveal options - no delivery service call yet
-                    result = await delivery_service.send_reflection(
-                        reflection_id=reflection_id,
-                        db=db
-                    )
-                    
-                    return MessageResponse(
-                        success=result.get("success", True),
-                        reflection_id=result["reflection_id"],
-                        sarthi_message=result["sarthi_message"],
-                        current_stage=result.get("current_stage", 27),
-                        next_stage=result.get("next_stage", 27),
-                        data=result.get("data", [])
-                    )
-                
-                elif decision == "no":
-                    logger.info("LLM determined user wants to continue editing - going to stage 20")
-                    
-                    choice_data = {"choice": "0", "label": "No, continue editing", "llm_decision": decision}
-                    db_handler.save_user_choice_message(db, reflection_id, choice_data, 27)
-                    
-                    db_handler.update_reflection_stage(db, reflection_id, 20)
-                    return await process_and_respond(db, 20, reflection_id, chat_id, request)
-                
-                else:
-                    logger.info("LLM couldn't determine clear decision - showing delivery options anyway")
-                    
-                    # Show delivery options when unclear
-                    result = await delivery_service.send_reflection(
-                        reflection_id=reflection_id,
-                        db=db
-                    )
-                    
-                    return MessageResponse(
-                        success=result.get("success", True),
-                        reflection_id=result["reflection_id"],
-                        sarthi_message=result["sarthi_message"],
-                        current_stage=result.get("current_stage", 27),
-                        next_stage=result.get("next_stage", 27),
-                        data=result.get("data", [])
-                    )
-                    
-            except Exception as e:
-                logger.error(f"Error in Stage 27 LLM processing: {str(e)}", exc_info=True)
-                
-                # Exception fallback - show delivery options
-                try:
-                    result = await delivery_service.send_reflection(
-                        reflection_id=reflection_id,
-                        db=db
-                    )
-                    
-                    return MessageResponse(
-                        success=result.get("success", True),
-                        reflection_id=result["reflection_id"],
-                        sarthi_message=result["sarthi_message"],
-                        current_stage=result.get("current_stage", 27),
-                        next_stage=result.get("next_stage", 27),
-                        data=result.get("data", [])
-                    )
-                    
-                except Exception as delivery_error:
-                    logger.error(f"Delivery service also failed: {str(delivery_error)}", exc_info=True)
-                    
-                    fallback_message = "Let me help you with the delivery options for your reflection."
-                    db_handler.save_message(db, reflection_id, fallback_message, sender=1, stage_no=27)
-                    
-                    return MessageResponse(
-                        success=True,
-                        reflection_id=str(reflection_id),
-                        sarthi_message=fallback_message,
-                        current_stage=27,
-                        next_stage=27,
-                        data=[]
-                    )
-        
-        # THIRD: Fallback when no message and no data
-        else:
-            return await process_and_respond(db, 27, reflection_id, chat_id, request)
+        except Exception as e:
+            logger.error(f"Delivery service failed: {str(e)}", exc_info=True)
+            print(f" STAGE19: ERROR - {str(e)}")
+            return MessageResponse(
+                success=False,
+                reflection_id=str(reflection_id),
+                sarthi_message="Delivery failed. Please try again.",
+                current_stage=19,
+                next_stage=19
+            )
     
     # Special handling for venting sanctuary stage
     if current_stage == 24:  # VENTING_SANCTUARY
