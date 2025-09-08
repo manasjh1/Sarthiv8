@@ -279,9 +279,9 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
                 user_choice = request.data[0]
                 print(f" STAGE19: Processing user choice: {user_choice}")
                 
-                # Handle initial delivery confirmation choice (deliver: 0 or 1)
-                if "deliver" in user_choice:
-                    deliver_choice = user_choice.get("deliver")
+                # Handle initial delivery confirmation choice (choice: 0 or 1)
+                if "choice" in user_choice:
+                    deliver_choice = user_choice.get("choice")
                     print(f" STAGE19: Delivery choice: {deliver_choice}")
                     
                     # DON'T store this choice in database as requested
@@ -419,8 +419,8 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
                     current_stage=19,
                     next_stage=19,
                     data=[
-                        {"deliver": 1, "label": "Yes, deliver this message"},
-                        {"deliver": 0, "label": "No, don't deliver"}
+                        {"choice": 1, "label": "Yes, deliver this message"},
+                        {"choice": 0, "label": "No, don't deliver"}
                     ]
                 )
                 
