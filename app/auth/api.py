@@ -1,10 +1,8 @@
-# app/auth/api.py
-
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
-from sqlalchemy import func  # <<< CORRECTED IMPORT
+from sqlalchemy import func  
 from app.database import get_db
 from app.schemas import SendOTPRequest, SendOTPResponse, VerifyOTPRequest, VerifyOTPResponse, InviteValidateRequest, InviteValidateResponse
 from app.auth.manager import AuthManager
