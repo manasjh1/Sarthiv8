@@ -82,7 +82,6 @@ class WhatsAppProvider(MessageProvider):
 
                         message_id = message_info.get("queue_id") or message_info.get("id", "no_id_found")
                         message_status = message_info.get("message_status", "no_status_found")
-                        # *** END FIX ***
                         
                         logging.info(f"✅ OTP SUCCESS DETAILS: Message ID: {message_id}, Status: {message_status}")
                         return SendResult(success=True, message_id=message_id)
