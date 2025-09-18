@@ -1,8 +1,6 @@
-# app/main.py
-
 import asyncio
 import logging
-from fastapi import FastAPI, Depends, HTTPException, APIRouter
+from fastapi import FastAPI, Depends, HTTPException, APIRouter, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.orchestration import MessageOrchestrator
@@ -37,13 +35,10 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-New-Token"]  
 )
 
-# --- Include all routers with their correct prefixes ---
-# 1. The auth_router from app/auth/api.py already has its prefix defined.
 app.include_router(auth_router)
-
-# 2. The routers from the 'endpoints' directory.
 app.include_router(invite.router)
 app.include_router(user.router)
 app.include_router(reflection.router)
@@ -57,6 +52,7 @@ async def health_check():
 @app.post("/chat", response_model=MessageResponse)
 async def chat_endpoint(
     request: MessageRequest,
+    response: Response,
     db: Session = Depends(get_db),
     token_data: dict = Depends(verify_token)
 ):
@@ -64,15 +60,22 @@ async def chat_endpoint(
     user_id = token_data["user_id"]
     chat_id = token_data["chat_id"]
     
+    if token_data.get("_should_refresh"):
+        from app.auth.utils import create_access_token
+        new_token = create_access_token(
+            str(user_id),
+            str(chat_id),
+            token_data.get("_invite_id")
+        )
+        response.headers["X-New-Token"] = new_token
+        logging.info(f"JWT token auto-refreshed for user {user_id}")
+    
     orchestrator = MessageOrchestrator(db)
     try:
         return await orchestrator.process_message(request, user_id, chat_id)
     except Exception as e:
         logging.error(f"Orchestrator error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
-
-# --- Startup and Shutdown Events ---
 
 cleanup_task = None
 

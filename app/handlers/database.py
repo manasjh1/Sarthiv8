@@ -1,4 +1,3 @@
-# app/handlers/database.py (FIXED)
 from sqlalchemy.orm import Session
 from app.models import Reflection, Message, Chat, User
 import uuid

@@ -177,68 +177,70 @@ async def handle_normal_flow(db: Session, request: MessageRequest, chat_id: uuid
         print(f"STAGE5: Entering Stage 5 for reflection {reflection_id}")
         logger.info(f"Processing Stage 5 (NAME_VALIDATION) for reflection {reflection_id}")
         
-        db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage)
+        reflection = db_handler.get_reflection_by_id(db, reflection_id)
         
-        try:
-            prompt_request_data = {"stage_id": current_stage, "data": {}}
-            prompt_result = await prompt_engine_service.process_dict_request(prompt_request_data)
+        if reflection.receiver_name and reflection.receiver_name.strip():
+            logger.info(f"STAGE5: Name exists from Stage 1: '{reflection.receiver_name}' - skipping validation")
             
-            llm_request = {
+            if request.message and request.message.strip():
+                db_handler.save_message(db, reflection_id, request.message, sender=0, stage_no=current_stage)
+                
+            try:
+                prompt_request_data = {"stage_id": current_stage, "data": {}}
+                prompt_result = await prompt_engine_service.process_dict_request(prompt_request_data)
+                
+                validation_message = request.message or f"The person I want to send this to is {reflection.receiver_name}"
+                
+                llm_request = {
                 "prompt": prompt_result['prompt'],
-                "user_message": request.message,
+                "user_message": validation_message,
                 "reflection_id": str(reflection_id)
-            }
-            
-            llm_response_str = await llm_service.process_json_request(json.dumps(llm_request))
-            llm_response = json.loads(llm_response_str)
-            
-            system_msg = llm_response.get("system_response", {})
-            user_response = llm_response.get("user_response", {})
-            sarthi_message = user_response.get("message", "Thank you for sharing that.")
-            
-            print(f"STAGE5: Got system_msg: {system_msg}")
-            print(f"STAGE5: Got sarthi_message: {sarthi_message}")
-            
-            print(f"STAGE5: Got system_msg: {system_msg}")
-            print(f"STAGE5: Checking is_valid_name: {system_msg.get('is_valid_name')}")
-
-
-            
-            is_valid_name = system_msg.get("is_valid_name")  # Could be "yes"/"no"
-            extracted_name = system_msg.get("name") or system_msg.get("extracted_name") or system_msg.get("recipient_name")
-            
-            print(f" STAGE5: is_valid_name: {is_valid_name}")
-            print(f" STAGE5: extracted_name: {extracted_name}")
+                }
                 
-            
-            if is_valid_name == "yes" and extracted_name:
-                db_handler.update_reflection_recipient(db, reflection_id, extracted_name)
-                print(f"STAGE5: Updated recipient name in DB: {extracted_name}")
-
-                # updated_reflection = db_handler.get_reflection_by_id(db, reflection_id)
-                # print(f"STAGE5: AFTER update - receiver_name: {updated_reflection.receiver_name}")
+                llm_response_str = await llm_service.process_json_request(json.dumps(llm_request))
+                llm_response = json.loads(llm_response_str)
                 
-            current_reflection = db_handler.get_reflection_by_id(db, reflection_id)
-            print(f"STAGE5: AFTER update - receiver_name: {current_reflection.receiver_name}")
-            next_playbook_stage = _get_first_playbook_stage(current_reflection.flow_type)
-            print(f"STAGE5: next_playbook_stage calculated as: {next_playbook_stage}")
-            logger.info(f"Moving to playbook stage {next_playbook_stage}")
-            
-            db_handler.update_reflection_stage(db, reflection_id, next_playbook_stage)
-            return await process_and_respond(db, next_playbook_stage, reflection_id, chat_id, request)
+                system_msg = llm_response.get("system_response", {})
+                user_response = llm_response.get("user_response", {})
+                sarthi_message = user_response.get("message", "Could you please tell me who this message is for?")
+                
+                print(f"STAGE5: Normal processing system_response: {system_msg}")
+                
+                is_valid_name = system_msg.get("is_valid_name")
+                extracted_name = system_msg.get("name") or system_msg.get("extracted_name") or system_msg.get("recipient_name")
+                
+                print(f"STAGE5: is_valid_name: {is_valid_name}, extracted_name: {extracted_name}")
+                
+                if is_valid_name == "yes" and extracted_name:
+                    db_handler.update_reflection_recipient(db, reflection_id, extracted_name)
+                    print(f"STAGE5: Updated recipient name: {extracted_name}")
+                    
+                    
+                    db_handler.save_message(db, reflection_id, sarthi_message, sender=1, stage_no=5)
+                    
+                    next_playbook_stage = _get_first_playbook_stage(reflection.flow_type)
+                    db_handler.update_reflection_stage(db, reflection_id, next_playbook_stage)
+                    return await process_and_respond(db, next_playbook_stage, reflection_id, chat_id, request)
+                
+                else:
+                    db_handler.save_message(db, reflection_id, sarthi_message, sender=1, stage_no=5)
+                    return MessageResponse(
+                        success=True,
+                        reflection_id=str(reflection_id),
+                        sarthi_message=sarthi_message,
+                        current_stage=5,
+                        next_stage=5
+                    )
         
-        except Exception as e:
-            logger.error(f"Error in Stage 5 processing: {str(e)}", exc_info=True)
-            error_message = "I'm having some difficulty processing that. Could you please tell me the name again?"
-            db_handler.save_message(db, reflection_id, error_message, sender=1, stage_no=current_stage)
-            
-            return MessageResponse(
-                success=True,
-                reflection_id=str(reflection_id),
-                sarthi_message=error_message,
-                current_stage=5,    
-                next_stage=5
-            )                              
+            except Exception as e:
+                logger.error(f"Error in Stage 5 processing: {str(e)}", exc_info=True)
+                error_message = "I'm having some difficulty processing that. Could you please tell me the name again?"
+                db_handler.save_message(db, reflection_id, error_message, sender=1, stage_no=5)
+                
+                next_playbook_stage = _get_first_playbook_stage(reflection.flow_type)
+                db_handler.update_reflection_stage(db, reflection_id, next_playbook_stage)
+                return await process_and_respond(db, next_playbook_stage, reflection_id, chat_id, request)
+                             
                    
     # --- Synthesis & Delivery Flow ---
     if current_stage == 16:  # SYNTHESIZING (Two-Part, Part 1)

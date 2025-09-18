@@ -1,6 +1,4 @@
-# app/endpoints/user.py
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth.utils import get_current_user
@@ -30,7 +28,10 @@ class UpdateProfileResponse(BaseModel):
 
 # --- User Profile Endpoints ---
 @router.get("/me")
-async def get_me(current_user: User = Depends(get_current_user)):
+async def get_me(
+    response: Response,
+    current_user: User = Depends(get_current_user)
+):
     """Gets the profile of the currently authenticated user."""
     return {
         "user_id": str(current_user.user_id),
@@ -42,8 +43,13 @@ async def get_me(current_user: User = Depends(get_current_user)):
     }
 
 @router.put("/update-name")
-async def update_name(req: UpdateNameRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Updates the authenticated user's name."""
+async def update_name(
+    req: UpdateNameRequest, 
+    response: Response,
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    """Updates the authenticated user's name with auto JWT refresh."""
     name = req.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name cannot be empty.")

@@ -1,15 +1,16 @@
-# app/auth/utils.py
+import logging
 import re
-from typing import Optional
+from typing import Optional, Tuple
 from sqlalchemy.orm import Session
 from app.models import User
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
-from fastapi import HTTPException, Depends, status
+from fastapi import HTTPException, Depends, status, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.database import get_db
 import uuid
 from config import AppConfig
+import logging
 
 config = AppConfig.from_env()
 security = HTTPBearer()
@@ -63,7 +64,7 @@ def create_access_token(user_id: str, chat_id: str, invite_id: str = None) -> st
     expire = datetime.utcnow() + timedelta(hours=config.llm.jwt_expiration_hours)
     to_encode = {
         "sub": str(user_id),
-        "chat_id": str(chat_id),  # <-- ADD chat_id to the token payload
+        "chat_id": str(chat_id),  
         "exp": expire,
         "iat": datetime.utcnow()
     }
@@ -71,6 +72,18 @@ def create_access_token(user_id: str, chat_id: str, invite_id: str = None) -> st
         to_encode["invite_id"] = invite_id
     
     return jwt.encode(to_encode, config.llm.jwt_secret_key, algorithm=config.llm.jwt_algorithm)
+
+def should_refresh_token(exp_timestamp: int, threshold_hours: int = None) -> bool:
+    """Check if token should be refreshed based on remaining time.
+    """
+    if threshold_hours is None:
+        threshold_hours = config.llm.jwt_expiration_hours // 2
+    
+    current_time = datetime.utcnow()
+    exp_time = datetime.utcfromtimestamp(exp_timestamp)
+    time_remaining = exp_time - current_time
+    
+    return time_remaining < timedelta(hours=threshold_hours) 
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     """Verify JWT token and return a dictionary with user_id and chat_id"""
@@ -81,32 +94,68 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
             algorithms=[config.llm.jwt_algorithm]
         )
         user_id: str = payload.get("sub")
-        chat_id: str = payload.get("chat_id") # <-- EXTRACT chat_id from token
+        chat_id: str = payload.get("chat_id")
+        exp_timestamp: int = payload.get("exp")
 
         if user_id is None or chat_id is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, 
                 detail="Invalid token: missing user or chat ID"
             )
-        # Return a dictionary containing both UUIDs
-        return {"user_id": uuid.UUID(user_id), "chat_id": uuid.UUID(chat_id)}
-    except JWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+            
+        try:
+            user_uuid = uuid.UUID(user_id)
+            chat_uuid = uuid.UUID(chat_id)
+        except (ValueError, TypeError) as e:
+            logging.error(f"UUID parsing failed - user_id: '{user_id}', chat_id: '{chat_id}', error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, 
+                detail="Invalid token: malformed user or chat ID"
+            )
+            
+        token_data = {"user_id": user_uuid, "chat_id": chat_uuid}
+        
+        if exp_timestamp and should_refresh_token(exp_timestamp):
+            token_data["_should_refresh"] = True
+            token_data["_invite_id"] = payload.get("invite_id")
+    
+        return token_data
+    
+    except JWTError as e:
+        logging.error(f"JWT decode error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     except (ValueError, TypeError):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid ID format in token")
+        raise 
+    except Exception as e:
+        logging.error(f"Unexpected error during token verification: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token verification failed")
 
 def get_current_user(
     token_data: dict = Depends(verify_token),
+    response: Response = None,
     db: Session = Depends(get_db)
 ) -> User:
-    """Get current user from database using the user_id from the verified token"""
+    """Get current user from database and auto-refresh token if needed"""
     user = db.query(User).filter(User.user_id == token_data["user_id"], User.status == 1).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive"
         )
-    return user
+    if token_data.get("_should_refresh") and response: 
+        chat = user.chat
+        if chat:
+           new_token = create_access_token(
+               str(user.user_id),
+               str(chat.chat_id),
+               token_data.get("_invite_id")
+           )
+           response.headers["X-New-Token"] = new_token
+           logging.info(f"JWT token auto-refreshed for user {user.user_id}")
+    
+    return user       
 
 def create_invite_token(invite_id: str, invite_code: str) -> str:
     expire = datetime.utcnow() + timedelta(hours=1)
